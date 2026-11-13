@@ -37,9 +37,10 @@ local ALCANCE_CORTE = 8
 
 local COOLDOWN_DASH = 6
 local DURACAO_INVULNERAVEL = 0.5
-local DURACAO_DASH = 0.22 -- quanto tempo o avanço leva, em segundos
+local DURACAO_DASH = 0.3 -- quanto tempo o avanço leva, em segundos
 local DURACAO_RASTRO = 1.2 -- quanto tempo o rastro fica na tela
 local DISTANCIA_DASH = 12 -- studs que o jogador avança
+local PASSOS_DASH = 4 -- em quantos passos o avanço é dividido
 
 local VIDA_CLASSE = 70
 local VELOCIDADE_BASE = 16
@@ -166,7 +167,6 @@ end
 
 --[[
     Rastro do dash: uma caixa escura e alta deixada para trás.
-    Bem maior e mais dura que antes, para o dash ficar visível.
 --]]
 local function mostrarRastroDash(posicao, direcao)
     local rastro = Instance.new("Part")
@@ -219,8 +219,6 @@ local function executarDash(jogador, personagem)
 
     local direcao = root.CFrame.LookVector
     local posicaoInicial = root.Position
-
-    -- Onde o jogador vai parar
     local destino = posicaoInicial + (direcao * DISTANCIA_DASH)
 
     marcarPartida(posicaoInicial)
@@ -232,30 +230,48 @@ local function executarDash(jogador, personagem)
     humanoid.Health = 1000000
 
     --[[
-        Avanço em passos, quadro a quadro.
+        Avanço do dash.
 
-        Antes eu usava só AssemblyLinearVelocity e o motor de física
-        amortecia na hora: o jogador avançava bem menos que o previsto.
-        Movendo o CFrame direto, os DISTANCIA_DASH studs acontecem de fato.
+        Três coisas travavam o avanço nas versões anteriores:
+
+        1. O Humanoid continuava no controle do movimento, então o motor
+           de física reancorava o corpo no lugar a cada quadro, brigando
+           com o CFrame escrito aqui. O WalkSpeed vai a 0 durante o dash.
+
+        2. Os passos eram muitos e curtos (10 passos de 0,022 s). O
+           servidor do Roblox não roda tão rápido, e o avanço ficava
+           arrastado. Agora são PASSOS_DASH passos com tempo maior.
+
+        3. O Humanoid tinha gravidade puxando o corpo para baixo no meio
+           do trajeto. A posição Y é mantida fixa durante o dash.
+
+        O corpo é levado em linha reta até o destino. No fim, o WalkSpeed
+        volta e o jogador retoma o controle normal.
     ]]
-    task.spawn(function()
-        local passos = 10
-        local porPasso = (destino - posicaoInicial) / passos
+    local velocidadeGuardada = humanoid.WalkSpeed
+    humanoid.WalkSpeed = 0
 
-        for i = 1, passos do
-            if not root or not root.Parent or not humanoide or not humanoid.Parent then
+    task.spawn(function()
+        local alturaInicial = posicaoInicial.Y
+        local porPasso = (destino - posicaoInicial) / PASSOS_DASH
+
+        for i = 1, PASSOS_DASH do
+            if not root or not root.Parent or not humanoid.Parent then
                 break
             end
 
             local atual = root.Position
-            root.CFrame = CFrame.new(atual + porPasso, atual + porPasso + direcao)
+            local novo = atual + porPasso
+            novo = Vector3.new(novo.X, alturaInicial, novo.Z)
 
-            -- Um rastro a cada dois passos, marcando o caminho inteiro
-            if i % 2 == 0 then
-                mostrarRastroDash(atual, direcao)
-            end
+            root.CFrame = CFrame.new(novo, novo + direcao)
 
-            task.wait(DURACAO_DASH / passos)
+            mostrarRastroDash(atual, direcao)
+            task.wait(DURACAO_DASH / PASSOS_DASH)
+        end
+
+        if humanoid and humanoid.Parent then
+            humanoid.WalkSpeed = velocidadeGuardada
         end
     end)
 
