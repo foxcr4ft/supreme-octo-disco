@@ -13,6 +13,9 @@
       2. Passivo: Dash ao apertar Shift, avanço de 12 studs com 0,5 s de
          invulnerabilidade, cooldown de 6 s.
 
+    EFEITOS (TASK 005, autorizado pelo Humano):
+      - Rastro do dash: Trail de sombra e fumaça escura.
+
     O DASH RODA NO SERVIDOR. O teclado é lido pelo LocalScript DashClient,
     que manda o pedido pelo RemoteEvent "DashLadino". O servidor confere
     cooldown e Tool equipada, então o cliente não consegue burlar nada.
@@ -37,19 +40,15 @@ local ALCANCE_CORTE = 8
 
 local COOLDOWN_DASH = 6
 local DURACAO_INVULNERAVEL = 0.5
-local DURACAO_DASH = 0.3 -- quanto tempo o avanço leva, em segundos
-local DURACAO_RASTRO = 1.2 -- quanto tempo o rastro fica na tela
-local DISTANCIA_DASH = 12 -- studs que o jogador avança
-local PASSOS_DASH = 4 -- em quantos passos o avanço é dividido
+local DURACAO_DASH = 0.3
+local DURACAO_RASTRO = 1.2
+local DISTANCIA_DASH = 12
+local PASSOS_DASH = 4
 
 local VIDA_CLASSE = 70
 local VELOCIDADE_BASE = 16
 local VELOCIDADE_CLASSE = VELOCIDADE_BASE * 1.25 -- +25%
 
---[[
-    RemoteEvent do Dash.
-    O servidor cria o Remote e escuta; o cliente só manda o pedido.
---]]
 local NOME_REMOTE_DASH = "DashLadino"
 
 local function obterRemoteDash()
@@ -62,10 +61,6 @@ local function obterRemoteDash()
     return remote
 end
 
---[[
-    Grava a tag "creator" no Humanoid do inimigo.
-    É essa tag que o WaveSystem e o BossSystem leem para premiar o abate.
---]]
 local function marcarCriador(humanoideInimigo, jogador)
     if not humanoideInimigo then
         return
@@ -81,10 +76,6 @@ local function marcarCriador(humanoideInimigo, jogador)
     tag.Value = jogador
 end
 
---[[
-    Diz se o modelo é um inimigo válido.
-    Nunca aceita o próprio personagem nem o personagem de outro jogador.
---]]
 local function ehInimigo(modelo, personagemDoJogador)
     if not modelo or modelo == personagemDoJogador then
         return false
@@ -98,9 +89,6 @@ local function ehInimigo(modelo, personagemDoJogador)
     return humanoide ~= nil and humanoide.Health > 0
 end
 
---[[
-    Corte rápido: adagas atingem os inimigos à frente, em ALCANCE_CORTE studs.
---]]
 local function cortarNaFrente(jogador, personagem)
     local root = personagem:FindFirstChild("HumanoidRootPart")
     if not root then
@@ -109,7 +97,6 @@ local function cortarNaFrente(jogador, personagem)
 
     local frente = root.CFrame.LookVector
 
-    -- Rastro do corte: uma linha fina, sem colisão e sem toque
     local rastro = Instance.new("Part")
     rastro.Name = "RastroAdagas"
     rastro.Size = Vector3.new(ALCANCE_CORTE * 0.8, 1.2, 0.25)
@@ -144,10 +131,6 @@ local function cortarNaFrente(jogador, personagem)
     end
 end
 
---[[
-    Efeito visual de partida: uma marca no chão onde o Ladino estava.
-    É o que faz o dash aparecer na tela: você vê de onde saiu.
---]]
 local function marcarPartida(posicao)
     local marca = Instance.new("Part")
     marca.Name = "MarcaDePartida"
@@ -166,7 +149,8 @@ local function marcarPartida(posicao)
 end
 
 --[[
-    Rastro do dash: uma caixa escura e alta deixada para trás.
+    Rastro do dash: uma caixa escura e alta deixada para trás,
+    com Trail de sombra e fumaça escura saindo dela.
 --]]
 local function mostrarRastroDash(posicao, direcao)
     local rastro = Instance.new("Part")
@@ -182,11 +166,48 @@ local function mostrarRastroDash(posicao, direcao)
     rastro.CanQuery = false
     rastro.Massless = true
     rastro.Parent = Workspace
+
+    -- Trail vertical: a cortina de sombra entre um rastro e o outro
+    local topo = Instance.new("Attachment")
+    topo.Name = "Topo"
+    topo.Position = Vector3.new(0, 3, 0)
+    topo.Parent = rastro
+
+    local base = Instance.new("Attachment")
+    base.Name = "Base"
+    base.Position = Vector3.new(0, -3, 0)
+    base.Parent = rastro
+
+    local rastroSombra = Instance.new("Trail")
+    rastroSombra.Name = "RastroSombra"
+    rastroSombra.Attachment0 = topo
+    rastroSombra.Attachment1 = base
+    rastroSombra.Lifetime = 0.6
+    rastroSombra.MinLength = 0
+    rastroSombra.Color = ColorSequence.new(Color3.fromRGB(120, 120, 140), Color3.fromRGB(20, 20, 30))
+    rastroSombra.Transparency = NumberSequence.new(0.3, 1)
+    rastroSombra.WidthScale = NumberSequence.new(1, 0.3)
+    rastroSombra.FaceCamera = true
+    rastroSombra.Parent = rastro
+
+    -- Fumaca escura saindo do rastro
+    local fumaca = Instance.new("ParticleEmitter")
+    fumaca.Name = "FumacaDash"
+    fumaca.Texture = "rbxasset://textures/particles/smoke_main.dds"
+    fumaca.Rate = 60
+    fumaca.Lifetime = NumberRange.new(0.6, 1.2)
+    fumaca.Speed = NumberRange.new(2, 6)
+    fumaca.SpreadAngle = Vector2.new(40, 40)
+    fumaca.Size = NumberSequence.new(2, 3)
+    fumaca.Transparency = NumberSequence.new(0.5, 1)
+    fumaca.Color = ColorSequence.new(Color3.fromRGB(60, 60, 70))
+    fumaca.Parent = rastro
+
     Debris:AddItem(rastro, DURACAO_RASTRO)
 end
 
 --[[
-    Som do dash, criado por código. É um whoosh curto e público do Roblox.
+    Som do dash, criado por código.
 --]]
 local function tocarSomDash(root)
     local som = Instance.new("Sound")
@@ -203,10 +224,9 @@ end
     Dash: avança DISTANCIA_DASH studs na direção da mira e fica
     invulnerável por DURACAO_INVULNERAVEL segundos.
 
-    A invulnerabilidade é feita elevando o MaxHealth do Humanoid: o dano
-    que chega nesse tempo não reduz a vida. Ao acabar, o MaxHealth volta
-    para VIDA_CLASSE e a vida retorna ao valor de antes do dash, então
-    o dash não serve de cura.
+    A invulnerabilidade é feita elevando o MaxHealth do Humanoid. Ao
+    acabar, o MaxHealth volta para VIDA_CLASSE e a vida retorna ao valor
+    de antes do dash, então o dash não serve de cura.
 
     Roda SÓ no servidor. O cliente apenas pede o dash pelo RemoteEvent.
 --]]
@@ -230,23 +250,9 @@ local function executarDash(jogador, personagem)
     humanoid.Health = 1000000
 
     --[[
-        Avanço do dash.
-
-        Três coisas travavam o avanço nas versões anteriores:
-
-        1. O Humanoid continuava no controle do movimento, então o motor
-           de física reancorava o corpo no lugar a cada quadro, brigando
-           com o CFrame escrito aqui. O WalkSpeed vai a 0 durante o dash.
-
-        2. Os passos eram muitos e curtos (10 passos de 0,022 s). O
-           servidor do Roblox não roda tão rápido, e o avanço ficava
-           arrastado. Agora são PASSOS_DASH passos com tempo maior.
-
-        3. O Humanoid tinha gravidade puxando o corpo para baixo no meio
-           do trajeto. A posição Y é mantida fixa durante o dash.
-
-        O corpo é levado em linha reta até o destino. No fim, o WalkSpeed
-        volta e o jogador retoma o controle normal.
+        Avanço em passos, com o WalkSpeed zerado: o Humanoid não pode
+        brigar com o CFrame, senão o motor de física reancora o corpo
+        no lugar e o dash não sai do ponto.
     ]]
     local velocidadeGuardada = humanoid.WalkSpeed
     humanoid.WalkSpeed = 0
@@ -256,7 +262,7 @@ local function executarDash(jogador, personagem)
         local porPasso = (destino - posicaoInicial) / PASSOS_DASH
 
         for i = 1, PASSOS_DASH do
-            if not root or not root.Parent or not humanoid.Parent then
+            if not root or not root.Parent or not humanoideGuardado or not humanoid.Parent then
                 break
             end
 
@@ -285,10 +291,6 @@ local function executarDash(jogador, personagem)
     end)
 end
 
---[[
-    Cooldown do dash, guardado por jogador no servidor.
-    Assim o segundo Shift seguido é bloqueado, mesmo se o cliente insistir.
---]]
 local ultimoDash = {}
 
 local function podeDarDash(jogador)
@@ -304,14 +306,8 @@ local function registrarDash(jogador)
     ultimoDash[jogador] = os.clock()
 end
 
--- Tool equipada de cada jogador, para validar o pedido de dash
 local equipado = {}
 
---[[
-    Escuta o pedido de dash vindo do cliente.
-    O servidor confere: a Tool tem que estar equipada e o cooldown tem que
-    ter passado. Assim o Shift repetido não passa.
---]]
 local function aoPedirDash(jogador)
     local tool = equipado[jogador]
     if not tool or tool.Parent ~= jogador.Character then
@@ -333,10 +329,6 @@ end
 
 obterRemoteDash().OnServerEvent:Connect(aoPedirDash)
 
---[[
-    Monta a Tool "Adagas Sombrias" só com Parts e WeldConstraint.
-    Nenhum Script é criado dentro dela.
---]]
 local function criarAdagas()
     local tool = Instance.new("Tool")
     tool.Name = NOME_ADAGAS
@@ -367,7 +359,6 @@ local function criarAdagas()
     weld.Part1 = lamina
     weld.Parent = handle
 
-    -- Clique: corte com cooldown de COOLDOWN_CORTE segundos
     local podeAtacar = true
 
     tool.Activated:Connect(function()
@@ -378,7 +369,7 @@ local function criarAdagas()
         local personagem = tool.Parent
         local jogador = Players:GetPlayerFromCharacter(personagem)
         if not jogador then
-            return
+           就把 return
         end
 
         local humanoid = personagem:FindFirstChildOfClass("Humanoid")
@@ -394,7 +385,6 @@ local function criarAdagas()
         end)
     end)
 
-    -- Passivo: Dash. O cliente avisa pelo RemoteEvent; o servidor decide.
     tool.Equipped:Connect(function()
         local personagem = tool.Parent
         local jogador = Players:GetPlayerFromCharacter(personagem)
@@ -402,8 +392,6 @@ local function criarAdagas()
             return
         end
 
-        -- Marca que este jogador está com as Adagas equipadas,
-        -- para o RemoteEvent saber que o pedido é válido.
         equipado[jogador] = tool
     end)
 
@@ -417,10 +405,6 @@ local function criarAdagas()
     return tool
 end
 
---[[
-    Entrega as Adagas para o jogador, sem duplicar.
-    Pode ser chamada de qualquer outro script do servidor.
---]]
 function _G.EntregarAdagas(jogador)
     if typeof(jogador) ~= "Instance" or not jogador:IsA("Player") then
         return
@@ -441,9 +425,6 @@ function _G.EntregarAdagas(jogador)
     adagas.Parent = mochila
 end
 
---[[
-    Aplica a vida e a velocidade da classe no personagem.
---]]
 function _G.AplicarAtributosLadino(personagem)
     local humanoid = personagem:FindFirstChildOfClass("Humanoid")
     if not humanoid then
