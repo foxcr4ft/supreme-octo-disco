@@ -8,8 +8,10 @@
     habilidade passiva com cooldown e tag "creator" em quem foi atingido.
 
     Ataques:
-      1. Clique: Bola de Fogo à distância, 30 de dano, alcance 20 studs,
-         cooldown de 1,0 s.
+      1. Clique: Bola de Fogo com AUTO-MIRA. Procura o inimigo mais próximo
+         num raio de 30 studs e atira nele, sem exigir que esteja na frente.
+         Dano 30, cooldown 1,0 s.
+         Se não houver inimigo no raio, atira na direção da mira.
       2. Passivo: Nova Arcana a cada 8 s, 40 de dano em área de 8 studs.
 
     Vida 80, velocidade normal. A espada do Guerreiro não é afetada:
@@ -27,7 +29,7 @@ local NOME_CAJADO = "Cajado Arcano"
 
 local DANO_FOGO = 30
 local COOLDOWN_FOGO = 1.0
-local ALCANCE_FOGO = 20
+local ALCANCE_FOGO = 30
 
 local DANO_NOVA = 40
 local COOLDOWN_NOVA = 8
@@ -58,6 +60,7 @@ end
 --[[
     Diz se o modelo é um inimigo válido.
     Nunca aceita o próprio personagem nem o personagem de outro jogador.
+    Serve para esqueleto, boss e servo esqueleto, que são Models com Humanoid.
 --]]
 local function ehInimigo(modelo, personagemDoJogador)
     if not modelo or modelo == personagemDoJogador then
@@ -73,16 +76,16 @@ local function ehInimigo(modelo, personagemDoJogador)
 end
 
 --[[
-    Escolhe o inimigo mais próximo, dentro do alcance, na direção da mira.
-    Usado pela Bola de Fogo, que é um ataque à distância.
+    AUTO-MIRA: procura o inimigo mais próximo dentro do raio, sem exigir que
+    ele esteja na frente. Se não achar ninguém, devolve nil e o ataque sai
+    na direção da mira, para o clique nunca travar.
 --]]
-local function acharAlvoNaMira(personagem, alcance)
+local function acharInimigoMaisProximo(personagem, alcance)
     local root = personagem:FindFirstChild("HumanoidRootPart")
     if not root then
         return nil
     end
 
-    local frente = root.CFrame.LookVector
     local escolhido = nil
     local menorDistancia = math.huge
 
@@ -91,14 +94,10 @@ local function acharAlvoNaMira(personagem, alcance)
             local rootInimigo = objeto:FindFirstChild("HumanoidRootPart")
             if rootInimigo then
                 local distancia = (rootInimigo.Position - root.Position).Magnitude
-                local direcao = (rootInimigo.Position - root.Position).Unit
 
-                -- Precisa estar na frente, igual ao golpe do Guerreiro
-                if distancia <= alcance and frente:Dot(direcao) > 0.2 then
-                    if distancia < menorDistancia then
-                        menorDistancia = distancia
-                        escolhido = objeto
-                    end
+                if distancia <= alcance and distancia < menorDistancia then
+                    menorDistancia = distancia
+                    escolhido = objeto
                 end
             end
         end
@@ -210,7 +209,7 @@ end
 local function criarCajado()
     local tool = Instance.new("Tool")
     tool.Name = NOME_CAJADO
-    tool.ToolTip = "Clique para lançar Bola de Fogo. A Nova Arcana sai sozinha a cada 8 segundos."
+    tool.ToolTip = "Clique para lançar Bola de Fogo (mira automática). A Nova Arcana sai sozinha a cada 8 segundos."
     tool.CanBeDropped = false
     tool.RequiresHandle = true
 
@@ -259,7 +258,9 @@ local function criarCajado()
 
         podeAtacar = false
 
-        local alvo = acharAlvoNaMira(personagem, ALCANCE_FOGO)
+        -- Auto-mira: atira no inimigo mais próximo do raio.
+        -- Sem inimigo por perto, atira na direção da mira.
+        local alvo = acharInimigoMaisProximo(personagem, ALCANCE_FOGO)
         lancarBolaDeFogo(jogador, personagem, alvo)
 
         task.delay(COOLDOWN_FOGO, function()

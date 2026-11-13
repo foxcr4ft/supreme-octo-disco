@@ -10,8 +10,12 @@
     Ataques:
       1. Clique: Corte rápido, 18 de dano, alcance 8 studs,
          cooldown de 0,35 s (bem rápido, é a classe de mais DPS).
-      2. Passivo: Dash ao apertar Shift, avanço rápido com 0,5 s de
+      2. Passivo: Dash ao apertar Shift, avanço de 10 studs com 0,5 s de
          invulnerabilidade, cooldown de 6 s.
+
+    O DASH RODA NO SERVIDOR. O teclado é lido pelo LocalScript DashClient,
+    que manda o pedido pelo RemoteEvent "DashLadino". O servidor confere
+    cooldown e Tool equipada, então o cliente não consegue burlar nada.
 
     Vida 70, velocidade 25% acima do normal. O Guerreiro não é afetado:
     este script só cuida das Adagas Sombrias.
@@ -21,7 +25,7 @@
 --]]
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 
@@ -33,11 +37,27 @@ local ALCANCE_CORTE = 8
 
 local COOLDOWN_DASH = 6
 local DURACAO_INVULNERAVEL = 0.5
-local DISTANCIA_DASH = 45
+local DISTANCIA_DASH = 10 -- studs que o jogador avança
 
 local VIDA_CLASSE = 70
 local VELOCIDADE_BASE = 16
 local VELOCIDADE_CLASSE = VELOCIDADE_BASE * 1.25 -- +25%
+
+--[[
+    RemoteEvent do Dash.
+    O servidor cria o Remote e escuta; o cliente só manda o pedido.
+--]]
+local NOME_REMOTE_DASH = "DashLadino"
+
+local function obterRemoteDash()
+    local remote = ReplicatedStorage:FindFirstChild(NOME_REMOTE_DASH)
+    if not remote then
+        remote = Instance.new("RemoteEvent")
+        remote.Name = NOME_REMOTE_DASH
+        remote.Parent = ReplicatedStorage
+    end
+    return remote
+end
 
 --[[
     Grava a tag "creator" no Humanoid do inimigo.
@@ -122,7 +142,55 @@ local function cortarNaFrente(jogador, personagem)
 end
 
 --[[
-    Dash: avanço rápido na direção da mira, com 0,5 s sem tomar dano.
+    Efeito visual do dash: um rastro escuro atrás do Ladino.
+    Sem colisão, sem toque e fora das checagens de física.
+--]]
+local function mostrarRastroDash(personagem)
+    local root = personagem:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return
+    end
+
+    local rastro = Instance.new("Part")
+    rastro.Name = "RastroDash"
+    rastro.Size = Vector3.new(2.5, 4.5, 5)
+    rastro.CFrame = root.CFrame * CFrame.new(0, 0, -2.5)
+    rastro.BrickColor = BrickColor.new("Really black")
+    rastro.Material = Enum.Material.Neon
+    rastro.Transparency = 0.45
+    rastro.Anchored = true
+    rastro.CanCollide = false
+    rastro.CanTouch = false
+    rastro.CanQuery = false
+    rastro.Massless = true
+    rastro.Parent = Workspace
+    Debris:AddItem(rastro, DURACAO_INVULNERAVEL)
+end
+
+--[[
+    Som do dash, criado por código. É um whoosh curto e público do Roblox.
+--]]
+local function tocarSomDash(root)
+    local som = Instance.new("Sound")
+    som.Name = "SomDash"
+    som.SoundId = "rbxassetid://9114642969"
+    som.Volume = 0.6
+    som.PlaybackSpeed = 1.3
+    som.Parent = root
+    som:Play()
+    Debris:AddItem(som, 1)
+end
+
+--[[
+    Dash: avança DISTANCIA_DASH studs na direção da mira e fica
+    invulnerável por DURACAO_INVULNERAVEL segundos.
+
+    A invulnerabilidade é feita elevando o MaxHealth do Humanoid: o dano
+    que chega nesse tempo não reduz a vida. Ao acabar, o MaxHealth volta
+    para VIDA_CLASSE e a vida retorna ao valor de antes do dash, então
+    o dash não serve de cura.
+
+    Roda SÓ no servidor. O cliente apenas pede o dash pelo RemoteEvent.
 --]]
 local function executarDash(jogador, personagem)
     local root = personagem:FindFirstChild("HumanoidRootPart")
@@ -131,42 +199,74 @@ local function executarDash(jogador, personagem)
         return
     end
 
+    -- Avanço na direção da mira
     local direcao = root.CFrame.LookVector
-    root.AssemblyLinearVelocity = direcao * DISTANCIA_DASH + Vector3.new(0, 8, 0)
+    root.AssemblyLinearVelocity = direcao * (DISTANCIA_DASH * 5) + Vector3.new(0, 4, 0)
 
-    -- Invulnerabilidade: qualquer dano durante o dash é devolvido
-    local vidaGuardada = humanoid.Health
-    local conexaoDano
-    conexaoDano = humanoid.HealthChanged:Connect(function(novaVida)
-        if novaVida < vidaGuardada then
-            humanoid.Health = vidaGuardada
-        else
-            vidaGuardada = novaVida
-        end
-    end)
+    mostrarRastroDash(personagem)
+    tocarSomDash(root)
 
-    -- Rastro do dash
-    local rastro = Instance.new("Part")
-    rastro.Name = "RastroDash"
-    rastro.Size = Vector3.new(2, 4, 4)
-    rastro.CFrame = root.CFrame * CFrame.new(0, 0, -2)
-    rastro.BrickColor = BrickColor.new("Dark stone grey")
-    rastro.Material = Enum.Material.Neon
-    rastro.Transparency = 0.5
-    rastro.Anchored = true
-    rastro.CanCollide = false
-    rastro.CanTouch = false
-    rastro.CanQuery = false
-    rastro.Massless = true
-    rastro.Parent = Workspace
-    Debris:AddItem(rastro, DURACAO_INVULNERAVEL)
+    local vidaAntes = humanoid.Health
+    humanoid.MaxHealth = 1000000
+    humanoid.Health = 1000000
 
     task.delay(DURACAO_INVULNERAVEL, function()
-        if conexaoDano then
-            conexaoDano:Disconnect()
+        if not humanoid or not humanoid.Parent then
+            return
         end
+
+        humanoid.MaxHealth = VIDA_CLASSE
+        humanoid.Health = math.min(vidaAntes, VIDA_CLASSE)
     end)
 end
+
+--[[
+    Cooldown do dash, guardado por jogador no servidor.
+    Assim o segundo Shift seguido é bloqueado, mesmo se o cliente insistir.
+--]]
+local ultimoDash = {}
+
+local function podeDarDash(jogador)
+    local agora = os.clock()
+    local ultimo = ultimoDash[jogador]
+    if ultimo and (agora - ultimo) < COOLDOWN_DASH then
+        return false
+    end
+    return true
+end
+
+local function registrarDash(jogador)
+    ultimoDash[jogador] = os.clock()
+end
+
+-- Tool equipada de cada jogador, para validar o pedido de dash
+local equipado = {}
+
+--[[
+    Escuta o pedido de dash vindo do cliente.
+    O servidor confere: a Tool tem que estar equipada e o cooldown tem que
+    ter passado. Assim o Shift repetido não passa.
+--]]
+local function aoPedirDash(jogador)
+    local tool = equipado[jogador]
+    if not tool or tool.Parent ~= jogador.Character then
+        return
+    end
+
+    if not podeDarDash(jogador) then
+        return
+    end
+
+    local personagem = jogador.Character
+    if not personagem then
+        return
+    end
+
+    registrarDash(jogador)
+    executarDash(jogador, personagem)
+end
+
+obterRemoteDash().OnServerEvent:Connect(aoPedirDash)
 
 --[[
     Monta a Tool "Adagas Sombrias" só com Parts e WeldConstraint.
@@ -229,47 +329,24 @@ local function criarAdagas()
         end)
     end)
 
-    -- Passivo: Dash no Shift, com cooldown de COOLDOWN_DASH segundos
-    local podeDarDash = true
-
-    tool.Equipped:Connect(function(mouse)
+    -- Passivo: Dash. O cliente avisa pelo RemoteEvent; o servidor decide.
+    tool.Equipped:Connect(function()
         local personagem = tool.Parent
         local jogador = Players:GetPlayerFromCharacter(personagem)
         if not jogador then
             return
         end
 
-        -- Escuta o Shift só enquanto a Tool está equipada.
-        -- A conexão é desfeita no Unequipped para não ficar escutando sempre.
-        local conexaoInput
-        conexaoInput = UserInputService.InputBegan:Connect(function(entrada, processadoPeloJogo)
-            if processadoPeloJogo then
-                return
-            end
-            if entrada.KeyCode ~= Enum.KeyCode.LeftShift then
-                return
-            end
-            if not podeDarDash then
-                return
-            end
-            if tool.Parent ~= personagem then
-                return
-            end
+        -- Marca que este jogador está com as Adagas equipadas,
+        -- para o RemoteEvent saber que o pedido é válido.
+        equipado[jogador] = tool
+    end)
 
-            podeDarDash = false
-            executarDash(jogador, personagem)
-
-            task.delay(COOLDOWN_DASH, function()
-                podeDarDash = true
-            end)
-        end)
-
-        tool.Unequipped:Connect(function()
-            if conexaoInput then
-                conexaoInput:Disconnect()
-                conexaoInput = nil
-            end
-        end)
+    tool.Unequipped:Connect(function()
+        local jogador = Players:GetPlayerFromCharacter(tool.Parent)
+        if jogador then
+            equipado[jogador] = nil
+        end
     end)
 
     return tool
@@ -316,3 +393,8 @@ end
 function _G.EntregarKitLadino(jogador)
     _G.EntregarAdagas(jogador)
 end
+
+Players.PlayerRemoving:Connect(function(jogador)
+    ultimoDash[jogador] = nil
+    equipado[jogador] = nil
+end)

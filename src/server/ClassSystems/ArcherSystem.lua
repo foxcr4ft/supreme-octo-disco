@@ -8,8 +8,10 @@
     habilidade passiva com cooldown e tag "creator" em quem foi atingido.
 
     Ataques:
-      1. Clique: Flecha rápida, 22 de dano, alcance 30 studs,
-         cooldown de 0,6 s. Chance de crítico de 20%, que dobra o dano.
+      1. Clique: Flecha com AUTO-MIRA. Procura o inimigo mais próximo num
+         raio de 30 studs e atira nele, sem exigir que esteja na frente.
+         Dano 22, cooldown 0,6 s, 20% de chance de crítico (dano dobrado).
+         Se não houver inimigo no raio, atira na direção da mira.
       2. Passivo: Chuva de Flechas a cada 8 s, 30 de dano em área de 12 studs.
 
     Vida 90, velocidade 10% acima do normal. O Guerreiro não é afetado:
@@ -61,6 +63,7 @@ end
 --[[
     Diz se o modelo é um inimigo válido.
     Nunca aceita o próprio personagem nem o personagem de outro jogador.
+    Serve para esqueleto, boss e servo esqueleto, que são Models com Humanoid.
 --]]
 local function ehInimigo(modelo, personagemDoJogador)
     if not modelo or modelo == personagemDoJogador then
@@ -76,16 +79,16 @@ local function ehInimigo(modelo, personagemDoJogador)
 end
 
 --[[
-    Escolhe o inimigo mais próximo, dentro do alcance, na direção da mira.
-    Usado pela Flecha, que é um ataque à distância.
+    AUTO-MIRA: procura o inimigo mais próximo dentro do raio, sem exigir que
+    ele esteja na frente. Se não achar ninguém, devolve nil e o ataque sai
+    na direção da mira, para o clique nunca travar.
 --]]
-local function acharAlvoNaMira(personagem, alcance)
+local function acharInimigoMaisProximo(personagem, alcance)
     local root = personagem:FindFirstChild("HumanoidRootPart")
     if not root then
         return nil
     end
 
-    local frente = root.CFrame.LookVector
     local escolhido = nil
     local menorDistancia = math.huge
 
@@ -94,13 +97,10 @@ local function acharAlvoNaMira(personagem, alcance)
             local rootInimigo = objeto:FindFirstChild("HumanoidRootPart")
             if rootInimigo then
                 local distancia = (rootInimigo.Position - root.Position).Magnitude
-                local direcao = (rootInimigo.Position - root.Position).Unit
 
-                if distancia <= alcance and frente:Dot(direcao) > 0.2 then
-                    if distancia < menorDistancia then
-                        menorDistancia = distancia
-                        escolhido = objeto
-                    end
+                if distancia <= alcance and distancia < menorDistancia then
+                    menorDistancia = distancia
+                    escolhido = objeto
                 end
             end
         end
@@ -215,7 +215,7 @@ end
 local function criarArco()
     local tool = Instance.new("Tool")
     tool.Name = NOME_ARCO
-    tool.ToolTip = "Clique para atirar a Flecha. A Chuva de Flechas sai sozinha a cada 8 segundos."
+    tool.ToolTip = "Clique para atirar a Flecha (mira automática). A Chuva de Flechas sai sozinha a cada 8 segundos."
     tool.CanBeDropped = false
     tool.RequiresHandle = true
 
@@ -263,7 +263,9 @@ local function criarArco()
 
         podeAtacar = false
 
-        local alvo = acharAlvoNaMira(personagem, ALCANCE_FLECHA)
+        -- Auto-mira: atira no inimigo mais próximo do raio.
+        -- Sem inimigo por perto, atira na direção da mira.
+        local alvo = acharInimigoMaisProximo(personagem, ALCANCE_FLECHA)
         dispararFlecha(jogador, personagem, alvo)
 
         task.delay(COOLDOWN_FLECHA, function()

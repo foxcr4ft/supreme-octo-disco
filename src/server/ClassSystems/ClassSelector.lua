@@ -7,17 +7,24 @@
     Quem entrega a Tool e ajusta vida/velocidade são os scripts de cada
     classe. Aqui só se chama a função certa.
 
+    CONTROLE DE ARMA ÚNICA:
+    A classe escolhida é gravada no próprio jogador, no atributo
+    "ClasseEscolhida". No respawn, este script limpa TODAS as armas de
+    classe da mochila e do corpo e entrega apenas a da classe salva.
+    É isso que impede o Mago, o Arqueiro e o Ladino de ficarem com a
+    Espada do Guerreiro junto (o SwordSystem entrega ela sozinho no
+    CharacterAdded).
+
     Classes disponíveis:
       Guerreiro - Espada do Guerreiro (SwordSystem, já existente)
       Mago      - Cajado Arcano      (MageSystem)
       Arqueiro  - Arco do Caçador    (ArcherSystem)
       Ladino    - Adagas Sombrias    (RogueSystem)
-
-    Os scripts das classes são lidos com _G quando carregam, então a
-    ordem de carregamento no Studio não importa.
 --]]
 
 local Players = game:GetService("Players")
+
+local ATRIBUTO_CLASSE = "ClasseEscolhida"
 
 -- Nome da Tool e funções de cada classe
 local CLASSES = {
@@ -61,6 +68,32 @@ local function acharClasse(nome)
         end
     end
     return nil
+end
+
+--[[
+    Tira da mochila e do corpo TODAS as armas de classe.
+    Usada ao trocar de classe e também no respawn, para nunca sobrar
+    uma arma antiga junto com a nova.
+--]]
+local function limparArmasDeClasse(jogador)
+    local mochila = jogador:FindFirstChild("Backpack")
+    local personagem = jogador.Character
+
+    for _, classe in ipairs(CLASSES) do
+        if mochila then
+            local naMochila = mochila:FindFirstChild(classe.tool)
+            if naMochila then
+                naMochila:Destroy()
+            end
+        end
+
+        if personagem then
+            local noCorpo = personagem:FindFirstChild(classe.tool)
+            if noCorpo then
+                noCorpo:Destroy()
+            end
+        end
+    end
 end
 
 --[[
@@ -119,25 +152,18 @@ local function criarMenu(jogador)
 
         botao.MouseButton1Click:Connect(function()
             classeEscolhida[jogador] = classe.nome
+
+            -- Marca a classe no próprio jogador. É esse atributo que os
+            -- outros scripts leem, então ninguém entrega arma errada.
+            jogador:SetAttribute(ATRIBUTO_CLASSE, classe.nome)
+
             menu.Enabled = false
 
-            -- Tira a arma da classe anterior, para não ficar com duas
-            local mochila = jogador:FindFirstChild("Backpack")
+            -- Tira TODAS as armas de classe antes de entregar a nova.
+            -- É isso que impede de ficar com duas armas na barra.
+            limparArmasDeClasse(jogador)
+
             local personagem = jogador.Character
-            for _, outra in ipairs(CLASSES) do
-                if outra.nome ~= classe.nome and mochila then
-                    local antiga = mochila:FindFirstChild(outra.tool)
-                    if antiga then
-                        antiga:Destroy()
-                    end
-                end
-                if outra.nome ~= classe.nome and personagem then
-                    local antigaNoCorpo = personagem:FindFirstChild(outra.tool)
-                    if antigaNoCorpo then
-                        antigaNoCorpo:Destroy()
-                    end
-                end
-            end
 
             -- Aplica os atributos da classe
             if personagem and classe.atributos and _G[classe.atributos] then
@@ -171,9 +197,11 @@ end
 
 --[[
     Entrega de novo a Tool da classe já escolhida (usado no renascimento).
+    Limpa as armas antes, para o jogador nunca ficar com duas.
 --]]
 local function reentregarClasse(jogador)
-    local nome = classeEscolhida[jogador]
+    -- Lê o atributo: a escolha sobrevive mesmo se este script recarregar
+    local nome = jogador:GetAttribute(ATRIBUTO_CLASSE) or classeEscolhida[jogador]
     if not nome then
         return false
     end
@@ -185,7 +213,13 @@ local function reentregarClasse(jogador)
 
     task.wait(0.3)
 
+    -- O SwordSystem entrega a Espada sozinho no CharacterAdded.
+    -- Aqui ela sai de novo se a classe for outra, então nunca sobram duas armas.
+    limparArmasDeClasse(jogador)
+
     local personagem = jogador.Character
+
+    -- Aplica os atributos e entrega APENAS a arma da classe salva
     if personagem and classe.atributos and _G[classe.atributos] then
         _G[classe.atributos](personagem)
     end
@@ -199,6 +233,7 @@ end
 
 local function configurarJogador(jogador)
     classeEscolhida[jogador] = nil
+    jogador:SetAttribute(ATRIBUTO_CLASSE, nil)
 
     jogador.CharacterAdded:Connect(function()
         -- Se já escolheu antes, entrega a mesma classe direto.
