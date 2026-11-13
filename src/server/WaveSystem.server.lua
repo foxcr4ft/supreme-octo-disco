@@ -22,7 +22,7 @@ local Players = game:GetService("Players")
 -- Ponto de reserva quando não existe SpawnLocation no mapa
 local PONTO_RESERVA = Vector3.new(0, 5, 0)
 
--- Centro da arena, usado para o boss e como último recurso de spawn
+-- Centro da arena, usado para o boss
 local CENTRO_ARENA = Vector3.new(0, 5, 0)
 local RAIO_SPAWN = 25
 
@@ -35,52 +35,55 @@ local inimigosVivos = 0
     SISTEMA DE REVIVER E CONTROLE DE SPAWN
     ===================================================================
 --]]
-local function configurarJogador(jogador)
-    -- Cria a interface de reviver com ResetOnSpawn = false para não sumir ao renascer
-    local function obterOuCriarGuiReviver()
-        local playerGui = jogador:WaitForChild("PlayerGui")
-        local guiReviver = playerGui:FindFirstChild("ReviverGui")
 
-        if not guiReviver then
-            guiReviver = Instance.new("ScreenGui")
-            guiReviver.Name = "ReviverGui"
-            guiReviver.ResetOnSpawn = false -- GUI NÃO some ao renascer
-            guiReviver.Enabled = false
-            guiReviver.Parent = playerGui
+-- Cria a interface de reviver com ResetOnSpawn = false para não sumir ao renascer
+local function obterOuCriarGuiReviver(jogador)
+    local playerGui = jogador:WaitForChild("PlayerGui")
+    local guiReviver = playerGui:FindFirstChild("ReviverGui")
 
-            local botao = Instance.new("TextButton")
-            botao.Name = "BotaoReviver"
-            botao.Size = UDim2.new(0, 260, 0, 60)
-            botao.Position = UDim2.new(0.5, -130, 0.7, 0)
-            botao.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-            botao.Text = "★ Reviver na Arena (50% HP) ★"
-            botao.TextColor3 = Color3.fromRGB(255, 255, 255)
-            botao.Font = Enum.Font.SourceSansBold
-            botao.TextSize = 16
-            botao.Parent = guiReviver
-
-            botao.MouseButton1Click:Connect(function()
-                guiReviver.Enabled = false -- Oculta a janela ao reviver
-                print("[Reviver] O jogador " .. jogador.Name .. " usou o reviver!")
-
-                jogador:LoadCharacter()
-                task.wait(0.3)
-
-                if jogador.Character and jogador.Character:FindFirstChild("Humanoid") then
-                    jogador.Character.Humanoid.Health = jogador.Character.Humanoid.MaxHealth * 0.5
-                    -- A espada é responsabilidade do SwordSystem
-                    if _G.EntregarEspada then
-                        _G.EntregarEspada(jogador)
-                    end
-                end
-            end)
-        end
-
+    if guiReviver then
         return guiReviver
     end
 
+    guiReviver = Instance.new("ScreenGui")
+    guiReviver.Name = "ReviverGui"
+    guiReviver.ResetOnSpawn = false -- GUI NÃO some ao renascer
+    guiReviver.Enabled = false
+    guiReviver.Parent = playerGui
+
+    local botao = Instance.new("TextButton")
+    botao.Name = "BotaoReviver"
+    botao.Size = UDim2.new(0, 260, 0, 60)
+    botao.Position = UDim2.new(0.5, -130, 0.7, 0)
+    botao.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+    botao.Text = "★ Reviver na Arena (50% HP) ★"
+    botao.TextColor3 = Color3.fromRGB(255, 255, 255)
+    botao.Font = Enum.Font.SourceSansBold
+    botao.TextSize = 16
+    botao.Parent = guiReviver
+
+    botao.MouseButton1Click:Connect(function()
+        guiReviver.Enabled = false -- Oculta a janela ao reviver
+        print("[Reviver] O jogador " .. jogador.Name .. " usou o reviver!")
+
+        jogador:LoadCharacter()
+        task.wait(0.3)
+
+        if jogador.Character and jogador.Character:FindFirstChild("Humanoid") then
+            jogador.Character.Humanoid.Health = jogador.Character.Humanoid.MaxHealth * 0.5
+            -- A espada é responsabilidade do SwordSystem
+            if _G.EntregarEspada then
+                _G.EntregarEspada(jogador)
+            end
+        end
+    end)
+
+    return guiReviver
+end
+
+local function configurarJogador(jogador)
     jogador.CharacterAdded:Connect(function(personagem)
-        local guiReviver = obterOuCriarGuiReviver()
+        local guiReviver = obterOuCriarGuiReviver(jogador)
         guiReviver.Enabled = false -- Começa oculta enquanto vivo
 
         local humanoid = personagem:WaitForChild("Humanoid")
