@@ -10,7 +10,7 @@
     Ataques:
       1. Clique: Corte rápido, 18 de dano, alcance 8 studs,
          cooldown de 0,35 s (bem rápido, é a classe de mais DPS).
-      2. Passivo: Dash ao apertar Shift, avanço de 10 studs com 0,5 s de
+      2. Passivo: Dash ao apertar Shift, avanço de 12 studs com 0,5 s de
          invulnerabilidade, cooldown de 6 s.
 
     O DASH RODA NO SERVIDOR. O teclado é lido pelo LocalScript DashClient,
@@ -37,7 +37,9 @@ local ALCANCE_CORTE = 8
 
 local COOLDOWN_DASH = 6
 local DURACAO_INVULNERAVEL = 0.5
-local DISTANCIA_DASH = 10 -- studs que o jogador avança
+local DURACAO_DASH = 0.22 -- quanto tempo o avanço leva, em segundos
+local DURACAO_RASTRO = 1.2 -- quanto tempo o rastro fica na tela
+local DISTANCIA_DASH = 12 -- studs que o jogador avança
 
 local VIDA_CLASSE = 70
 local VELOCIDADE_BASE = 16
@@ -142,29 +144,45 @@ local function cortarNaFrente(jogador, personagem)
 end
 
 --[[
-    Efeito visual do dash: um rastro escuro atrás do Ladino.
-    Sem colisão, sem toque e fora das checagens de física.
+    Efeito visual de partida: uma marca no chão onde o Ladino estava.
+    É o que faz o dash aparecer na tela: você vê de onde saiu.
 --]]
-local function mostrarRastroDash(personagem)
-    local root = personagem:FindFirstChild("HumanoidRootPart")
-    if not root then
-        return
-    end
+local function marcarPartida(posicao)
+    local marca = Instance.new("Part")
+    marca.Name = "MarcaDePartida"
+    marca.Shape = Enum.PartType.Cylinder
+    marca.Size = Vector3.new(0.4, 8, 8)
+    marca.CFrame = CFrame.new(posicao) * CFrame.Angles(0, 0, math.rad(90))
+    marca.BrickColor = BrickColor.new("Really black")
+    marca.Material = Enum.Material.Neon
+    marca.Transparency = 0.25
+    marca.Anchored = true
+    marca.CanCollide = false
+    marca.CanTouch = false
+    marca.CanQuery = false
+    marca.Parent = Workspace
+    Debris:AddItem(marca, DURACAO_RASTRO)
+end
 
+--[[
+    Rastro do dash: uma caixa escura e alta deixada para trás.
+    Bem maior e mais dura que antes, para o dash ficar visível.
+--]]
+local function mostrarRastroDash(posicao, direcao)
     local rastro = Instance.new("Part")
     rastro.Name = "RastroDash"
-    rastro.Size = Vector3.new(2.5, 4.5, 5)
-    rastro.CFrame = root.CFrame * CFrame.new(0, 0, -2.5)
+    rastro.Size = Vector3.new(4, 6, 3)
+    rastro.CFrame = CFrame.new(posicao, posicao + direcao) * CFrame.new(0, 0, 1.5)
     rastro.BrickColor = BrickColor.new("Really black")
     rastro.Material = Enum.Material.Neon
-    rastro.Transparency = 0.45
+    rastro.Transparency = 0.3
     rastro.Anchored = true
     rastro.CanCollide = false
     rastro.CanTouch = false
     rastro.CanQuery = false
     rastro.Massless = true
     rastro.Parent = Workspace
-    Debris:AddItem(rastro, DURACAO_INVULNERAVEL)
+    Debris:AddItem(rastro, DURACAO_RASTRO)
 end
 
 --[[
@@ -174,11 +192,11 @@ local function tocarSomDash(root)
     local som = Instance.new("Sound")
     som.Name = "SomDash"
     som.SoundId = "rbxassetid://9114642969"
-    som.Volume = 0.6
-    som.PlaybackSpeed = 1.3
+    som.Volume = 1
+    som.PlaybackSpeed = 1.1
     som.Parent = root
     som:Play()
-    Debris:AddItem(som, 1)
+    Debris:AddItem(som, 1.5)
 end
 
 --[[
@@ -199,16 +217,47 @@ local function executarDash(jogador, personagem)
         return
     end
 
-    -- Avanço na direção da mira
     local direcao = root.CFrame.LookVector
-    root.AssemblyLinearVelocity = direcao * (DISTANCIA_DASH * 5) + Vector3.new(0, 4, 0)
+    local posicaoInicial = root.Position
 
-    mostrarRastroDash(personagem)
+    -- Onde o jogador vai parar
+    local destino = posicaoInicial + (direcao * DISTANCIA_DASH)
+
+    marcarPartida(posicaoInicial)
+    mostrarRastroDash(posicaoInicial, direcao)
     tocarSomDash(root)
 
     local vidaAntes = humanoid.Health
     humanoid.MaxHealth = 1000000
     humanoid.Health = 1000000
+
+    --[[
+        Avanço em passos, quadro a quadro.
+
+        Antes eu usava só AssemblyLinearVelocity e o motor de física
+        amortecia na hora: o jogador avançava bem menos que o previsto.
+        Movendo o CFrame direto, os DISTANCIA_DASH studs acontecem de fato.
+    ]]
+    task.spawn(function()
+        local passos = 10
+        local porPasso = (destino - posicaoInicial) / passos
+
+        for i = 1, passos do
+            if not root or not root.Parent or not humanoide or not humanoid.Parent then
+                break
+            end
+
+            local atual = root.Position
+            root.CFrame = CFrame.new(atual + porPasso, atual + porPasso + direcao)
+
+            -- Um rastro a cada dois passos, marcando o caminho inteiro
+            if i % 2 == 0 then
+                mostrarRastroDash(atual, direcao)
+            end
+
+            task.wait(DURACAO_DASH / passos)
+        end
+    end)
 
     task.delay(DURACAO_INVULNERAVEL, function()
         if not humanoid or not humanoid.Parent then
