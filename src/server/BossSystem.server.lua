@@ -9,6 +9,8 @@
       1. Golpe Sísmico (Terremoto em área)
       2. Invocação de Servos Esqueléticos (Invoca lacaios na arena)
       3. Carga Brutal (Investida em alta velocidade atropelando jogadores)
+         A Carga Brutal só causa dano de novo no mesmo alvo depois de 1 segundo.
+    A recompensa de 100 moedas vai só para quem lutou (tag creator no Humanoid).
 --]]
 
 local Workspace = game:GetService("Workspace")
@@ -18,6 +20,7 @@ local Debris = game:GetService("Debris")
 local NOME_BOSS = "Lorde Esqueleto Malakar"
 local VIDA_MAXIMA = 800
 local RECOMPENSA_MOEDAS = 100
+local COOLDOWN_CARGA = 1
 
 local function encontrarJogadorMaisProximo(posicaoBoss)
     local alvoMaisProximo = nil
@@ -38,6 +41,15 @@ local function encontrarJogadorMaisProximo(posicaoBoss)
     end
 
     return alvoMaisProximo, menorDistancia
+end
+
+-- Lê a tag "creator" (ObjectValue) que a espada grava em quem acertou o boss
+local function lerCriador(humanoid)
+    local tag = humanoid:FindFirstChild("creator")
+    if tag and tag:IsA("ObjectValue") and tag.Value and tag.Value:IsA("Player") then
+        return tag.Value
+    end
+    return nil
 end
 
 -- ATAQUE 1: Golpe Sísmico (Terremoto em Área)
@@ -133,6 +145,7 @@ local function executarInvocacao(bossModel)
 end
 
 -- ATAQUE 3: Carga Brutal (Investida em Linha Reta)
+-- Cada alvo só pode ser atingido de novo depois de 1 segundo.
 local function executarCargaBrutal(bossModel)
     local root = bossModel:FindFirstChild("HumanoidRootPart")
     local humanoid = bossModel:FindFirstChild("Humanoid")
@@ -142,22 +155,31 @@ local function executarCargaBrutal(bossModel)
     if not alvo or not alvo:FindFirstChild("HumanoidRootPart") then return end
 
     print("[BossSystem] " .. NOME_BOSS .. " está preparando a Carga Brutal!")
-    
+
     root.BrickColor = BrickColor.new("Really red")
     local direcaoCarga = (alvo.HumanoidRootPart.Position - root.Position).Unit
     local pontoDestino = root.Position + (direcaoCarga * 40)
-    
+
     task.wait(1)
 
     humanoid.WalkSpeed = 35
     humanoid:MoveTo(pontoDestino)
 
+    -- personagem -> os.clock() do último dano desta carga
+    local ultimoDano = {}
     local conexaoToque
     conexaoToque = root.Touched:Connect(function(hit)
         local char = hit.Parent
         if char and char ~= bossModel then
             local hum = char:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
+                local agora = os.clock()
+                local ultimo = ultimoDano[char]
+                if ultimo and (agora - ultimo) < COOLDOWN_CARGA then
+                    return
+                end
+                ultimoDano[char] = agora
+
                 hum:TakeDamage(40)
                 if char:FindFirstChild("HumanoidRootPart") then
                     char.HumanoidRootPart.AssemblyLinearVelocity = direcaoCarga * 60 + Vector3.new(0, 20, 0)
@@ -239,9 +261,19 @@ function _G.IniciarLutaBoss(pontoDeSpawn, aoDerrotarBossCallback)
     nomeLabel.Text = "★ " .. NOME_BOSS .. " ★"
     nomeLabel.Parent = billboard
 
+    -- Quem bateu no boss fica registrado pela tag creator da espada
+    local lutadores = {}
+    local function registrarLutador()
+        local criador = lerCriador(humanoid)
+        if criador then
+            lutadores[criador] = true
+        end
+    end
+
     humanoid.HealthChanged:Connect(function(novaVida)
         local porcentagem = math.clamp(novaVida / VIDA_MAXIMA, 0, 1)
         barraVida.Size = UDim2.new(porcentagem, 0, 1, 0)
+        registrarLutador()
     end)
 
     task.spawn(function()
@@ -257,7 +289,7 @@ function _G.IniciarLutaBoss(pontoDeSpawn, aoDerrotarBossCallback)
                 if humanoid.Health > 0 then
                     local ataqueEscolhido = listaAtaques[indiceAtaque]
                     ataqueEscolhido(bossModel)
-                    
+
                     indiceAtaque = indiceAtaque + 1
                     if indiceAtaque > #listaAtaques then
                         indiceAtaque = 1
@@ -271,11 +303,19 @@ function _G.IniciarLutaBoss(pontoDeSpawn, aoDerrotarBossCallback)
 
     humanoid.Died:Connect(function()
         print("[BossSystem] " .. NOME_BOSS .. " foi derrotado!")
+        registrarLutador()
 
-        for _, jogador in ipairs(Players:GetPlayers()) do
-            if _G.AdicionarMoedas then
+        local premiouAlguem = false
+        for jogador in pairs(lutadores) do
+            if jogador.Parent == Players and _G.AdicionarMoedas then
                 _G.AdicionarMoedas(jogador, RECOMPENSA_MOEDAS)
+                print("[BossSystem] +" .. RECOMPENSA_MOEDAS .. " moedas para quem lutou: " .. jogador.Name)
+                premiouAlguem = true
             end
+        end
+
+        if not premiouAlguem then
+            print("[BossSystem] Boss caiu sem tag creator. Ninguém recebeu a recompensa.")
         end
 
         if aoDerrotarBossCallback then
