@@ -8,7 +8,7 @@
 
     Ataques:
       1. Clique / toque com a espada equipada (Tool.Activated):
-         swing rápido na frente do jogador, alcance de 6 studs,
+         swing rápido na frente do jogador, alcance de 10 studs,
          cooldown de 0,8 s para não dar spam.
          Dano igual ao dano base da espada (DANO_BASICO).
       2. Giro automático a cada 8 s enquanto a espada está equipada.
@@ -32,7 +32,7 @@ local Debris = game:GetService("Debris")
 local NOME_ESPADA = "Espada do Guerreiro"
 local DANO_BASICO = 25 -- dano base da espada: vale para o clique e para o giro
 local COOLDOWN_CLIQUE = 0.8 -- tempo mínimo entre dois cliques
-local ALCANCE_CLIQUE = 6 -- studs atingidos na frente do jogador
+local ALCANCE_CLIQUE = 10 -- studs atingidos na frente do jogador
 local DANO_GIRO = 50
 local COOLDOWN_GIRO = 8
 local RAIO_GIRO = 14
@@ -77,6 +77,7 @@ end
     Efeito visual do swing: um arco fino na frente do jogador.
     A Part NÃO colide, não é tocável e não entra nas checagens de física,
     então não vira parede e não empurra ninguém.
+    O tamanho acompanha o alcance, para o rastro não ficar curto.
 --]]
 local function mostrarSwing(personagem)
     local root = personagem:FindFirstChild("HumanoidRootPart")
@@ -89,7 +90,7 @@ local function mostrarSwing(personagem)
 
     local swing = Instance.new("Part")
     swing.Name = "SwingGuerreiro"
-    swing.Size = Vector3.new(5, 3, 0.3)
+    swing.Size = Vector3.new(ALCANCE_CLIQUE * 0.9, 3, 0.3)
     swing.CFrame = CFrame.new(centro, centro + frente)
     swing.BrickColor = BrickColor.new("Cyan")
     swing.Material = Enum.Material.Neon
