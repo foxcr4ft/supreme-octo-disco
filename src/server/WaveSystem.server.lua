@@ -1,28 +1,7 @@
---[[
-    ===================================================================
-    Dungeon Slayer: Reborn - Sistema de Waves e Arena (WaveSystem)
-    Arquivo: src/server/WaveSystem.server.lua
-    ===================================================================
-    Este script cuida APENAS de:
-      1. 5 Waves progressivas de esqueletos com dificuldade crescente.
-      2. Sistema de Reviver com 50% de vida (ResetOnSpawn = false).
-      3. Premiação de moedas apenas para o jogador que derrotou o inimigo.
-      4. Integração na Wave 5 com o BossSystem.
-
-    A espada NÃO fica aqui. Ela mora em src/server/SwordSystem.server.lua.
-    Quando precisa, este script apenas pede a entrega com _G.EntregarEspada.
-
-    Os esqueletos são criados pela função spawnEsqueleto(wave), logo abaixo
-    do reviver e antes do loop que inicia as waves.
---]]
-
-local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 
--- Ponto de reserva quando não existe SpawnLocation no mapa
 local PONTO_RESERVA = Vector3.new(0, 5, 0)
-
--- Centro da arena, usado para o boss
 local CENTRO_ARENA = Vector3.new(0, 5, 0)
 local RAIO_SPAWN = 25
 
@@ -30,13 +9,41 @@ local waveAtual = 1
 local MAX_WAVES = 5
 local inimigosVivos = 0
 
+-- TASK 005 (autorizado pelo Humano): controla o loop das waves.
+local rodando = false
+local reinicioPendente = false
+
 --[[
     ===================================================================
-    SISTEMA DE REVIVER E CONTROLE DE SPAWN
+    MENU DE MORTE: REVIVER NA ARENA OU VOLTAR AO HUB
     ===================================================================
 --]]
 
--- Cria a interface de reviver com ResetOnSpawn = false para não sumir ao renascer
+local ATRIBUTO_REVIVE_PAGO = "RevivePago"
+
+--[[
+    Só oferece a escolha para quem caiu DENTRO da arena.
+    O Hub fica em Y = 100; a arena fica perto do chão.
+--]]
+local function estaNaArena(jogador)
+    local personagem = jogador.Character
+    if not personagem then
+        return false
+    end
+
+    local root = personagem:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return false
+    end
+
+    return root.Position.Y < 60
+end
+
+--[[
+    Menu com DOIS botoes:
+      1. Reviver na Arena (50% HP) - revive pago, run intacta.
+      2. Voltar ao Hub (PERDE TUDO) - renascimento gratuito com penalidade.
+--]]
 local function obterOuCriarGuiReviver(jogador)
     local playerGui = jogador:WaitForChild("PlayerGui")
     local guiReviver = playerGui:FindFirstChild("ReviverGui")
@@ -47,34 +54,104 @@ local function obterOuCriarGuiReviver(jogador)
 
     guiReviver = Instance.new("ScreenGui")
     guiReviver.Name = "ReviverGui"
-    guiReviver.ResetOnSpawn = false -- GUI NÃO some ao renascer
+    guiReviver.ResetOnSpawn = false
     guiReviver.Enabled = false
     guiReviver.Parent = playerGui
 
-    local botao = Instance.new("TextButton")
-    botao.Name = "BotaoReviver"
-    botao.Size = UDim2.new(0, 260, 0, 60)
-    botao.Position = UDim2.new(0.5, -130, 0.7, 0)
-    botao.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-    botao.Text = "★ Reviver na Arena (50% HP) ★"
-    botao.TextColor3 = Color3.fromRGB(255, 255, 255)
-    botao.Font = Enum.Font.SourceSansBold
-    botao.TextSize = 16
-    botao.Parent = guiReviver
+    local fundo = Instance.new("Frame")
+    fundo.Name = "Fundo"
+    fundo.Size = UDim2.new(0, 420, 0, 190)
+    fundo.Position = UDim2.new(0.5, -210, 0.55, 0)
+    fundo.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+    fundo.BackgroundTransparency = 0.15
+    fundo.BorderSizePixel = 0
+    fundo.Parent = guiReviver
 
-    botao.MouseButton1Click:Connect(function()
-        guiReviver.Enabled = false -- Oculta a janela ao reviver
+    local titulo = Instance.new("TextLabel")
+    titulo.Name = "Titulo"
+    titulo.Size = UDim2.new(1, -20, 0, 36)
+    titulo.Position = UDim2.new(0, 10, 0, 10)
+    titulo.BackgroundTransparency = 1
+    titulo.Font = Enum.Font.SourceSansBold
+    titulo.TextSize = 24
+    titulo.TextColor3 = Color3.fromRGB(255, 80, 80)
+    titulo.Text = "Você caiu em combate!"
+    titulo.Parent = fundo
+
+    -- BOTAO 1: revive pago
+    local botaoPago = Instance.new("TextButton")
+    botaoPago.Name = "BotaoReviver"
+    botaoPago.Size = UDim2.new(1, -20, 0, 60)
+    botaoPago.Position = UDim2.new(0, 10, 0, 54)
+    botaoPago.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+    botaoPago.BorderSizePixel = 0
+    botaoPago.Text = "Reviver na Arena (50% HP) - mantem a run"
+    botaoPago.TextColor3 = Color3.fromRGB(255, 255, 255)
+    botaoPago.Font = Enum.Font.SourceSansBold
+    botaoPago.TextSize = 16
+    botaoPago.Parent = fundo
+
+    -- BOTAO 2: renascimento gratuito, com a penalidade explicita
+    local botaoGratis = Instance.new("TextButton")
+    botaoGratis.Name = "BotaoVoltarHub"
+    botaoGratis.Size = UDim2.new(1, -20, 0, 60)
+    botaoGratis.Position = UDim2.new(0, 10, 0, 120)
+    botaoGratis.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+    botaoGratis.BorderSizePixel = 0
+    botaoGratis.Text = "Voltar ao Hub (PERDE TUDO) - sem pagar, perde a entrada"
+    botaoGratis.TextColor3 = Color3.fromRGB(255, 235, 235)
+    botaoGratis.Font = Enum.Font.SourceSansBold
+    botaoGratis.TextSize = 15
+    botaoGratis.Parent = fundo
+
+    -- Revive pago: renasce na arena, run intacta
+    botaoPago.MouseButton1Click:Connect(function()
+        guiReviver.Enabled = false
+
+        jogador:SetAttribute(ATRIBUTO_REVIVE_PAGO, true)
+
+        if _G.MostrarAviso then
+            _G.MostrarAviso(jogador, "Reviveu na arena! A run continua.", Color3.fromRGB(0, 200, 255))
+        end
 
         jogador:LoadCharacter()
         task.wait(0.3)
 
         if jogador.Character and jogador.Character:FindFirstChild("Humanoid") then
             jogador.Character.Humanoid.Health = jogador.Character.Humanoid.MaxHealth * 0.5
-            -- A espada é responsabilidade do SwordSystem
             if _G.EntregarEspada then
                 _G.EntregarEspada(jogador)
             end
         end
+
+        print("[Reviver] " .. jogador.Name .. " reviveu na arena. A run continua.")
+    end)
+
+    -- Renascimento gratuito: volta ao Hub e PERDE as moedas da entrada
+    botaoGratis.MouseButton1Click:Connect(function()
+        guiReviver.Enabled = false
+
+        -- Penalidade total: perde o que ganhou nesta entrada.
+        -- O leaderstats total NAO e tocado.
+        local perdidas = 0
+        if _G.PenalizarMoedasDaDungeon then
+            perdidas = _G.PenalizarMoedasDaDungeon(jogador)
+        end
+
+        if _G.MostrarAviso then
+            _G.MostrarAviso(jogador, "Perdeu " .. perdidas .. " moedas da entrada!", Color3.fromRGB(255, 90, 90))
+        end
+
+        jogador:SetAttribute(ATRIBUTO_REVIVE_PAGO, false)
+        print("[Reviver] " .. jogador.Name .. " foi para o Hub e perdeu " .. perdidas .. " moedas.")
+
+        -- A arena dele recomeca do zero. Se ainda tiver alguem vivo
+        -- dentro, o reinicio fica agendado ate a arena esvaziar.
+        if _G.ReiniciarArena then
+            _G.ReiniciarArena()
+        end
+
+        jogador:LoadCharacter()
     end)
 
     return guiReviver
@@ -83,13 +160,19 @@ end
 local function configurarJogador(jogador)
     jogador.CharacterAdded:Connect(function(personagem)
         local guiReviver = obterOuCriarGuiReviver(jogador)
-        guiReviver.Enabled = false -- Começa oculta enquanto vivo
+        guiReviver.Enabled = false
 
         local humanoid = personagem:WaitForChild("Humanoid")
         humanoid.Died:Connect(function()
+            print("[Reviver] O jogador " .. jogador.Name .. " caiu em combate!")
+
+            if not estaNaArena(jogador) then
+                return
+            end
+
             task.delay(1, function()
                 if guiReviver then
-                    guiReviver.Enabled = true -- Mostra o botão de reviver
+                    guiReviver.Enabled = true
                 end
             end)
         end)
@@ -107,8 +190,6 @@ end
     ===================================================================
 --]]
 
--- Zera o contador "Moedas na Dungeon" de todos que estão na arena.
--- O leaderstats total continua separado, no CoinSystem.
 local function zerarContadorDaArena()
     if not _G.ZerarMoedasDaDungeon then
         return
@@ -125,8 +206,6 @@ end
     ===================================================================
 --]]
 
--- Procura o SpawnLocation do mapa.
--- Se não achar, avisa no Output e usa Vector3.new(0, 5, 0).
 local function acharPontoDeSpawn()
     local spawnLocation = Workspace:FindFirstChild("SpawnLocation")
 
@@ -142,12 +221,9 @@ local function acharPontoDeSpawn()
     return PONTO_RESERVA
 end
 
--- Cria um esqueleto no ponto de spawn.
--- Vida e dano crescem com o número da wave.
 local function spawnEsqueleto(wave)
     local pontoDeSpawn = acharPontoDeSpawn()
 
-    -- Espalha os esqueletos em volta do spawn para não nascerem um dentro do outro
     local angulo = math.random() * math.pi * 2
     local distancia = math.random(4, RAIO_SPAWN)
     local posSpawn = pontoDeSpawn + Vector3.new(math.cos(angulo) * distancia, 3, math.sin(angulo) * distancia)
@@ -155,7 +231,6 @@ local function spawnEsqueleto(wave)
     local esqueleto = Instance.new("Model")
     esqueleto.Name = "Esqueleto (Wave " .. wave .. ")"
 
-    -- Corpo principal, que serve de HumanoidRootPart
     local root = Instance.new("Part")
     root.Name = "HumanoidRootPart"
     root.Size = Vector3.new(2, 4, 1.5)
@@ -165,7 +240,6 @@ local function spawnEsqueleto(wave)
     root.CanCollide = true
     root.Parent = esqueleto
 
-    -- Cabeça, soldada no corpo
     local cabeca = Instance.new("Part")
     cabeca.Name = "Head"
     cabeca.Size = Vector3.new(1.6, 1.6, 1.6)
@@ -181,7 +255,6 @@ local function spawnEsqueleto(wave)
     pescoco.Part1 = cabeca
     pescoco.Parent = root
 
-    -- Vida e velocidade crescem com a wave
     local humanoid = Instance.new("Humanoid")
     local vidaTotal = 100 + (wave * 30)
     humanoid.MaxHealth = vidaTotal
@@ -192,13 +265,9 @@ local function spawnEsqueleto(wave)
     esqueleto.PrimaryPart = root
     esqueleto.Parent = Workspace
 
-    -- A morte por dano chama humanoid.Died, que cuida das moedas e do Destroy.
-    -- O Destroy só acontece aí dentro, então o esqueleto não é apagado ao nascer.
     humanoid.Died:Connect(function()
         inimigosVivos = inimigosVivos - 1
 
-        -- Identifica quem causou o golpe final pela tag "creator"
-        -- (a tag é gravada pela espada, no SwordSystem)
         local tagCriador = humanoid:FindFirstChild("creator")
         if tagCriador and tagCriador.Value and tagCriador.Value:IsA("Player") then
             local jogadorMatador = tagCriador.Value
@@ -216,7 +285,6 @@ local function spawnEsqueleto(wave)
         end
     end)
 
-    -- IA de perseguição do esqueleto ao jogador mais próximo
     task.spawn(function()
         while esqueleto and esqueleto.Parent and humanoid.Health > 0 do
             local alvoMaisProximo = nil
@@ -240,7 +308,6 @@ local function spawnEsqueleto(wave)
                 if menorDistancia <= 3.5 then
                     local humAlvo = alvoMaisProximo:FindFirstChild("Humanoid")
                     if humAlvo then
-                        -- Dano do esqueleto também cresce com a wave
                         humAlvo:TakeDamage(8 + (wave * 2))
                         task.wait(1.2)
                     end
@@ -255,6 +322,82 @@ end
 
 --[[
     ===================================================================
+    ESTADO DA RUN E REINICIO
+    ===================================================================
+--]]
+
+-- Diz se tem alguem vivo lutando dentro da arena.
+local function temAlguemNaArena()
+    for _, jog in ipairs(Players:GetPlayers()) do
+        if estaNaArena(jog) then
+            local personagem = jog.Character
+            if personagem then
+                local humanoid = personagem:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- Limpa o que pertence a run: esqueletos e o boss.
+local function limparInimigos()
+    for _, objeto in ipairs(Workspace:GetChildren()) do
+        if objeto:IsA("Model") then
+            local nome = objeto.Name
+            if nome:find("Esqueleto") or nome == "Lorde Esqueleto Malakar" then
+                objeto:Destroy()
+            end
+        end
+    end
+
+    inimigosVivos = 0
+end
+
+--[[
+    Reinicia a arena na Wave 1.
+
+    Se ainda houver alguem vivo lutando, o reinicio NAO acontece na hora:
+    seria derrubar a run de quem esta jogando. Ele fica agendado e
+    acontece quando a arena esvaziar.
+--]]
+function _G.ReiniciarArena()
+    if temAlguemNaArena() then
+        reinicioPendente = true
+        print("[WaveSystem] Reinício agendado: ainda tem gente lutando na arena.")
+        return false
+    end
+
+    rodando = false
+    limparInimigos()
+    waveAtual = 1
+    reinicioPendente = false
+
+    print("[WaveSystem] Arena reiniciada na Wave 1.")
+
+    task.spawn(function()
+        task.wait(2)
+        zerarContadorDaArena()
+        rodando = true
+    end)
+
+    return true
+end
+
+task.spawn(function()
+    while true do
+        task.wait(2)
+
+        if reinicioPendente and not temAlguemNaArena() then
+            _G.ReiniciarArena()
+        end
+    end
+end)
+
+--[[
+    ===================================================================
     LOOP PRINCIPAL DA ARENA
     ===================================================================
 --]]
@@ -263,36 +406,59 @@ task.spawn(function()
     print("[WaveSystem] Iniciando Arena 1: Criptas Esquecidas!")
     zerarContadorDaArena()
 
-    for w = 1, MAX_WAVES do
-        waveAtual = w
+    rodando = true
 
-        if waveAtual < 5 then
-            print("[WaveSystem] Wave " .. waveAtual .. "/" .. MAX_WAVES .. " começou.")
-
-            local qtdInimigos = 3 + (waveAtual * 2)
-            for i = 1, qtdInimigos do
-                spawnEsqueleto(waveAtual)
-                task.wait(0.6)
+    while rodando do
+        for w = 1, MAX_WAVES do
+            if not rodando then
+                break
             end
 
-            while inimigosVivos > 0 do
-                task.wait(0.5)
-            end
+            waveAtual = w
 
-            print("[WaveSystem] Wave " .. waveAtual .. "/" .. MAX_WAVES .. " concluída!")
-            task.wait(3)
-        else
-            print("[WaveSystem] Wave 5: o chefe final apareceu!")
+            if waveAtual < 5 then
+                print("[WaveSystem] Wave " .. waveAtual .. "/" .. MAX_WAVES .. " começou.")
 
-            if _G.IniciarLutaBoss then
-                _G.IniciarLutaBoss(CENTRO_ARENA + Vector3.new(0, 4, 0), function()
-                    print("==================================================")
-                    print("★ ARENA 1 CONCLUÍDA! PARABÉNS GUERREIROS! ★")
-                    print("==================================================")
-                end)
+                local qtdInimigos = 3 + (waveAtual * 2)
+                for i = 1, qtdInimigos do
+                    if not rodando then
+                        break
+                    end
+
+                    spawnEsqueleto(waveAtual)
+                    task.wait(0.6)
+                end
+
+                while inimigosVivos > 0 and rodando do
+                    task.wait(0.5)
+                end
+
+                if not rodando then
+                    break
+                end
+
+                print("[WaveSystem] Wave " .. waveAtual .. "/" .. MAX_WAVES .. " concluída!")
+                task.wait(3)
             else
-                warn("[WaveSystem] BossSystem não encontrado!")
+                print("[WaveSystem] Wave 5: o chefe final apareceu!")
+
+                if _G.IniciarLutaBoss then
+                    _G.IniciarLutaBoss(CENTRO_ARENA + Vector3.new(0, 4, 0), function()
+                        print("==================================================")
+                        print("★ ARENA 1 CONCLUÍDA! PARABÉNS GUERREIROS! ★")
+                        print("==================================================")
+                    end)
+                else
+                    warn("[WaveSystem] BossSystem não encontrado!")
+                end
+
+                rodando = false
             end
+        end
+
+        if rodando then
+            print("[WaveSystem] As 5 waves terminaram. Arena livre para nova entrada.")
+            rodando = false
         end
     end
 end)
