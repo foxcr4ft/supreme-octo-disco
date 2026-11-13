@@ -105,6 +105,26 @@ end
 
 --[[
     ===================================================================
+    CONTADOR DA DUNGEON
+    ===================================================================
+--]]
+
+-- Zera o contador "Moedas na Dungeon" de todos que estão na arena.
+-- O leaderstats total continua separado, no CoinSystem.
+local function zerarContadorDaArena()
+    if not _G.ZerarMoedasDaDungeon then
+        return
+    end
+
+    for _, jog in ipairs(Players:GetPlayers()) do
+        _G.ZerarMoedasDaDungeon(jog)
+    end
+
+    print("[WaveSystem] Contador da dungeon zerado ao entrar na Arena 1.")
+end
+
+--[[
+    ===================================================================
     SPAWN DOS ESQUELETOS (WAVES 1 A 4)
     ===================================================================
 --]]
@@ -251,6 +271,7 @@ end
 task.spawn(function()
     task.wait(4)
     print("[WaveSystem] Iniciando Arena 1: Criptas Esquecidas!")
+    zerarContadorDaArena()
 
     for w = 1, MAX_WAVES do
         waveAtual = w

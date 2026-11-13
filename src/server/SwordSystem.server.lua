@@ -5,9 +5,16 @@
     ===================================================================
     Este é o único script que cuida da espada.
     Aqui NÃO existe Instance.new("Script") nem .Source: isso dá erro no Roblox.
-    O dano é controlado no servidor pelo tool.Activated, com tag creator
-    em quem bateu e cooldown entre golpes. O giro sai no servidor enquanto
-    a espada estiver equipada.
+
+    Ataques:
+      1. Clique / toque com a espada equipada (Tool.Activated):
+         swing rápido na frente do jogador, alcance de 6 studs,
+         cooldown de 0,8 s para não dar spam.
+         Dano igual ao dano base da espada (DANO_BASICO).
+      2. Giro automático a cada 8 s enquanto a espada está equipada.
+
+    Os dois gravam a tag "creator" em quem foi atingido, e é essa tag
+    que o WaveSystem e o BossSystem leem para premiar o abate.
 
     Outros scripts podem pedir a espada com:
       _G.EntregarEspada(jogador)
@@ -18,8 +25,9 @@ local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 
 local NOME_ESPADA = "Espada do Guerreiro"
-local DANO_BASICO = 25
-local COOLDOWN_BASICO = 0.5
+local DANO_BASICO = 25 -- dano base da espada: vale para o clique e para o giro
+local COOLDOWN_CLIQUE = 0.8 -- tempo mínimo entre dois cliques
+local ALCANCE_CLIQUE = 6 -- studs atingidos na frente do jogador
 local DANO_GIRO = 50
 local COOLDOWN_GIRO = 8
 local RAIO_GIRO = 14
@@ -29,12 +37,17 @@ local RAIO_GIRO = 14
     É essa tag que os outros sistemas leem para saber quem causou o dano.
 --]]
 local function marcarCriador(humanoideInimigo, jogador)
+    if not humanoideInimigo then
+        return
+    end
+
     local tag = humanoideInimigo:FindFirstChild("creator")
     if not tag then
         tag = Instance.new("ObjectValue")
         tag.Name = "creator"
         tag.Parent = humanoideInimigo
     end
+
     tag.Value = jogador
 end
 
@@ -46,11 +59,71 @@ local function ehInimigo(modelo, personagemDoJogador)
     if not modelo or modelo == personagemDoJogador then
         return false
     end
+
     if Players:GetPlayerFromCharacter(modelo) then
         return false
     end
+
     local humanoide = modelo:FindFirstChildOfClass("Humanoid")
     return humanoide ~= nil and humanoide.Health > 0
+end
+
+--[[
+    Ataque do clique: swing rápido na frente do jogador.
+    Atinge inimigos num raio de ALCANCE_CLIQUE studs à frente.
+--]]
+local function atacarNaFrente(jogador, personagem, tool)
+    local root = personagem:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return
+    end
+
+    -- Swing visual: uma lâmina que varre a frente do jogador
+    local frente = root.CFrame.LookVector
+    local centro = root.Position + (frente * (ALCANCE_CLIQUE * 0.6))
+
+    local swing = Instance.new("Part")
+    swing.Name = "SwingGuerreiro"
+    swing.Size = Vector3.new(6, 4, 0.4)
+    swing.CFrame = CFrame.new(centro, centro + frente)
+    swing.BrickColor = BrickColor.new("Cyan")
+    swing.Material = Enum.Material.Neon
+    swing.Transparency = 0.55
+    swing.Anchored = true
+    swing.CanCollide = false
+    swing.Parent = Workspace
+    Debris:AddItem(swing, 0.25)
+
+    -- A espada gira rápido na mão durante o swing
+    local handle = tool:FindFirstChild("Handle")
+    if handle and handle:IsA("BasePart") then
+        handle.CFrame = handle.CFrame * CFrame.Angles(0, 0, math.rad(180))
+    end
+
+    -- Dano só em inimigos, na frente do jogador
+    local atingidos = 0
+    for _, objeto in ipairs(Workspace:GetChildren()) do
+        if ehInimigo(objeto, personagem) then
+            local rootInimigo = objeto:FindFirstChild("HumanoidRootPart")
+            if rootInimigo then
+                local distancia = (rootInimigo.Position - root.Position).Magnitude
+                local direcao = (rootInimigo.Position - root.Position).Unit
+                local naFrente = frente:Dot(direcao) > 0.2
+
+                if distancia <= ALCANCE_CLIQUE and naFrente then
+                    local humanoideInimigo = objeto:FindFirstChildOfClass("Humanoid")
+                    marcarCriador(humanoideInimigo, jogador)
+                    humanoideInimigo:TakeDamage(DANO_BASICO)
+                    atingidos = atingidos + 1
+                    print("[SwordSystem] Clique de " .. jogador.Name .. " atingiu " .. objeto.Name)
+                end
+            end
+        end
+    end
+
+    if atingidos == 0 then
+        print("[SwordSystem] Clique de " .. jogador.Name .. " não acertou ninguém.")
+    end
 end
 
 --[[
@@ -87,7 +160,7 @@ local function criarEspada()
     weld.Part1 = lamina
     weld.Parent = handle
 
-    -- Ataque básico: só no servidor, com cooldown
+    -- Clique / toque: cooldown de COOLDOWN_CLIQUE segundos
     local podeAtacar = true
 
     tool.Activated:Connect(function()
@@ -107,29 +180,14 @@ local function criarEspada()
         end
 
         podeAtacar = false
+        atacarNaFrente(jogador, personagem, tool)
 
-        local conexao
-        conexao = handle.Touched:Connect(function(hit)
-            local modelo = hit:FindFirstAncestorOfClass("Model")
-            if not ehInimigo(modelo, personagem) then
-                return
-            end
-
-            local humanoideInimigo = modelo:FindFirstChildOfClass("Humanoid")
-            marcarCriador(humanoideInimigo, jogador)
-            humanoideInimigo:TakeDamage(DANO_BASICO)
-            print("[SwordSystem] Golpe de " .. jogador.Name .. " causou " .. DANO_BASICO .. " de dano em " .. modelo.Name)
-        end)
-
-        task.delay(COOLDOWN_BASICO, function()
-            if conexao then
-                conexao:Disconnect()
-            end
+        task.delay(COOLDOWN_CLIQUE, function()
             podeAtacar = true
         end)
     end)
 
-    -- Giro: roda no servidor enquanto a espada está equipada
+    -- Giro automático: roda no servidor enquanto a espada está equipada
     tool.Equipped:Connect(function()
         local personagem = tool.Parent
         local jogador = Players:GetPlayerFromCharacter(personagem)
