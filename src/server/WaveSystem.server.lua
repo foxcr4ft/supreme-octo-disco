@@ -11,13 +11,19 @@
 
     A espada NÃO fica aqui. Ela mora em src/server/SwordSystem.server.lua.
     Quando precisa, este script apenas pede a entrega com _G.EntregarEspada.
+
+    Os esqueletos são criados pela função spawnEsqueleto(wave), logo abaixo
+    do reviver e antes do loop que inicia as waves.
 --]]
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
-local CENTRO_ARENA = Vector3.new(0, 5, 0)
+local CENTRO_ARENA = Vector3.new(0, 5, 0) -- usado como reserva quando não há SpawnLocation
 local RAIO_SPAWN = 25
+
+-- Nome do SpawnLocation da Arena 1 (altere se o seu tiver outro nome)
+local NOME_SPAWN_ARENA = "Arena1Spawn"
 
 local waveAtual = 1
 local MAX_WAVES = 5
@@ -98,28 +104,63 @@ end
     SPAWN DOS ESQUELETOS (WAVES 1 A 4)
     ===================================================================
 --]]
-local function spawnEsqueleto(nivelWave)
+
+-- Procura o SpawnLocation da Arena 1 no mapa.
+-- Se não achar (ou se não estiver com CanCollide), usa o centro da arena.
+local function acharPontoDeSpawn()
+    local spawnArena = Workspace:FindFirstChild(NOME_SPAWN_ARENA, true)
+    if spawnArena and spawnArena:IsA("BasePart") then
+        return spawnArena.Position
+    end
+    warn("[WaveSystem] SpawnLocation \"" .. NOME_SPAWN_ARENA .. "\" não encontrado. Usando o centro da arena.")
+    return CENTRO_ARENA
+end
+
+-- Cria um esqueleto no ponto de spawn da arena.
+-- Vida e dano crescem com o número da wave.
+local function spawnEsqueleto(wave)
+    local pontoDeSpawn = acharPontoDeSpawn()
+
+    -- Espalha os esqueletos em volta do spawn para não nascerem um dentro do outro
     local angulo = math.random() * math.pi * 2
-    local distancia = math.random(8, RAIO_SPAWN)
-    local posSpawn = CENTRO_ARENA + Vector3.new(math.cos(angulo) * distancia, 2, math.sin(angulo) * distancia)
+    local distancia = math.random(4, RAIO_SPAWN)
+    local posSpawn = pontoDeSpawn + Vector3.new(math.cos(angulo) * distancia, 3, math.sin(angulo) * distancia)
 
     local esqueleto = Instance.new("Model")
-    esqueleto.Name = "Esqueleto (Wave " .. nivelWave .. ")"
+    esqueleto.Name = "Esqueleto (Wave " .. wave .. ")"
 
+    -- Corpo principal, que serve de HumanoidRootPart
     local root = Instance.new("Part")
     root.Name = "HumanoidRootPart"
     root.Size = Vector3.new(2, 4, 1.5)
     root.Position = posSpawn
-    root.BrickColor = BrickColor.new("White")
+    root.BrickColor = BrickColor.new("Institutional white")
     root.Material = Enum.Material.Plastic
     root.CanCollide = true
     root.Parent = esqueleto
 
+    -- Cabeça, soldada no corpo
+    local cabeca = Instance.new("Part")
+    cabeca.Name = "Head"
+    cabeca.Size = Vector3.new(1.6, 1.6, 1.6)
+    cabeca.CFrame = root.CFrame * CFrame.new(0, 2.8, 0)
+    cabeca.BrickColor = BrickColor.new("White")
+    cabeca.Material = Enum.Material.Plastic
+    cabeca.CanCollide = false
+    cabeca.Massless = true
+    cabeca.Parent = esqueleto
+
+    local pescoco = Instance.new("WeldConstraint")
+    pescoco.Part0 = root
+    pescoco.Part1 = cabeca
+    pescoco.Parent = root
+
+    -- Vida e velocidade crescem com a wave
     local humanoid = Instance.new("Humanoid")
-    local vidaBase = 40 + (nivelWave * 15)
-    humanoid.MaxHealth = vidaBase
-    humanoid.Health = vidaBase
-    humanoid.WalkSpeed = 10 + (nivelWave * 1.5)
+    local vidaTotal = 100 + (wave * 30)
+    humanoid.MaxHealth = vidaTotal
+    humanoid.Health = vidaTotal
+    humanoid.WalkSpeed = 10 + (wave * 1.5)
     humanoid.Parent = esqueleto
 
     esqueleto.PrimaryPart = root
@@ -149,7 +190,8 @@ local function spawnEsqueleto(nivelWave)
                 if menorDistancia <= 3.5 then
                     local humAlvo = alvoMaisProximo:FindFirstChild("Humanoid")
                     if humAlvo then
-                        humAlvo:TakeDamage(8 + (nivelWave * 2))
+                        -- Dano do esqueleto também cresce com a wave
+                        humAlvo:TakeDamage(8 + (wave * 2))
                         task.wait(1.2)
                     end
                 end
@@ -164,6 +206,7 @@ local function spawnEsqueleto(nivelWave)
         print("[WaveSystem] Esqueleto derrotado! Restam: " .. inimigosVivos)
 
         -- Identifica o jogador que causou o golpe final pela tag "creator"
+        -- (a tag é gravada pela espada, no SwordSystem)
         local tagCriador = humanoid:FindFirstChild("creator")
         if tagCriador and tagCriador.Value and tagCriador.Value:IsA("Player") then
             local jogadorMatador = tagCriador.Value
