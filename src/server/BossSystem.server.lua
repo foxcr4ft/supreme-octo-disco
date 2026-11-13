@@ -57,8 +57,6 @@ local function executarGolpeSismico(bossModel)
     local root = bossModel:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
-    print("[BossSystem] " .. NOME_BOSS .. " está preparando o Golpe Sísmico!")
-
     local anel = Instance.new("Part")
     anel.Shape = Enum.PartType.Cylinder
     anel.Size = Vector3.new(0.5, 30, 30)
@@ -68,6 +66,8 @@ local function executarGolpeSismico(bossModel)
     anel.Transparency = 0.5
     anel.Anchored = true
     anel.CanCollide = false
+    anel.CanTouch = false
+    anel.CanQuery = false
     anel.Parent = Workspace
 
     task.wait(1.2)
@@ -97,8 +97,6 @@ end
 local function executarInvocacao(bossModel)
     local root = bossModel:FindFirstChild("HumanoidRootPart")
     if not root then return end
-
-    print("[BossSystem] " .. NOME_BOSS .. " está invocando servos esqueléticos!")
 
     local QUANTIDADE_SERVOS = 3
     for i = 1, QUANTIDADE_SERVOS do
@@ -154,8 +152,6 @@ local function executarCargaBrutal(bossModel)
     local alvo = encontrarJogadorMaisProximo(root.Position)
     if not alvo or not alvo:FindFirstChild("HumanoidRootPart") then return end
 
-    print("[BossSystem] " .. NOME_BOSS .. " está preparando a Carga Brutal!")
-
     root.BrickColor = BrickColor.new("Really red")
     local direcaoCarga = (alvo.HumanoidRootPart.Position - root.Position).Unit
     local pontoDestino = root.Position + (direcaoCarga * 40)
@@ -195,8 +191,6 @@ local function executarCargaBrutal(bossModel)
 end
 
 function _G.IniciarLutaBoss(pontoDeSpawn, aoDerrotarBossCallback)
-    print("[BossSystem] Criando o " .. NOME_BOSS .. "...")
-
     local bossModel = Instance.new("Model")
     bossModel.Name = NOME_BOSS
 
@@ -302,20 +296,20 @@ function _G.IniciarLutaBoss(pontoDeSpawn, aoDerrotarBossCallback)
     end)
 
     humanoid.Died:Connect(function()
-        print("[BossSystem] " .. NOME_BOSS .. " foi derrotado!")
         registrarLutador()
 
         local premiouAlguem = false
         for jogador in pairs(lutadores) do
             if jogador.Parent == Players and _G.AdicionarMoedas then
                 _G.AdicionarMoedas(jogador, RECOMPENSA_MOEDAS)
-                print("[BossSystem] +" .. RECOMPENSA_MOEDAS .. " moedas para quem lutou: " .. jogador.Name)
                 premiouAlguem = true
             end
         end
 
+        print("[BossSystem] Boss derrotado! Recompensa de " .. RECOMPENSA_MOEDAS .. " moedas entregue.")
+
         if not premiouAlguem then
-            print("[BossSystem] Boss caiu sem tag creator. Ninguém recebeu a recompensa.")
+            print("[BossSystem] Ninguém tinha tag creator, então ninguém recebeu.")
         end
 
         if aoDerrotarBossCallback then
@@ -326,5 +320,3 @@ function _G.IniciarLutaBoss(pontoDeSpawn, aoDerrotarBossCallback)
         if bossModel then bossModel:Destroy() end
     end)
 end
-
-print("[BossSystem] Sistema do Chefe da Arena 1 carregado com sucesso!")

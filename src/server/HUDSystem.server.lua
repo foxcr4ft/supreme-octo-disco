@@ -135,7 +135,6 @@ function _G.ZerarMoedasDaDungeon(jogador)
 
     moedasDaDungeon[jogador] = 0
     atualizarContador(jogador)
-    print("[HUDSystem] Contador da dungeon zerado para " .. jogador.Name)
 end
 
 local function configurarJogador(jogador)
@@ -152,5 +151,3 @@ end
 Players.PlayerRemoving:Connect(function(jogador)
     moedasDaDungeon[jogador] = nil
 end)
-
-print("[HUDSystem] HUD da dungeon carregado. A recompensa continua no CoinSystem.")

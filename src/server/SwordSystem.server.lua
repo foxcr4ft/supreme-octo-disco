@@ -118,7 +118,6 @@ local function atacarNaFrente(jogador, personagem, tool)
     mostrarSwing(personagem)
 
     -- Dano só em inimigos, na frente do jogador
-    local atingidos = 0
     for _, objeto in ipairs(Workspace:GetChildren()) do
         if ehInimigo(objeto, personagem) then
             local rootInimigo = objeto:FindFirstChild("HumanoidRootPart")
@@ -131,15 +130,9 @@ local function atacarNaFrente(jogador, personagem, tool)
                     local humanoideInimigo = objeto:FindFirstChildOfClass("Humanoid")
                     marcarCriador(humanoideInimigo, jogador)
                     humanoideInimigo:TakeDamage(DANO_BASICO)
-                    atingidos = atingidos + 1
-                    print("[SwordSystem] Clique de " .. jogador.Name .. " atingiu " .. objeto.Name)
                 end
             end
         end
-    end
-
-    if atingidos == 0 then
-        print("[SwordSystem] Clique de " .. jogador.Name .. " não acertou ninguém.")
     end
 end
 
@@ -248,7 +241,6 @@ local function criarEspada()
                             local humanoideInimigo = objeto:FindFirstChildOfClass("Humanoid")
                             marcarCriador(humanoideInimigo, jogador)
                             humanoideInimigo:TakeDamage(DANO_GIRO)
-                            print("[SwordSystem] Giro atingiu " .. objeto.Name)
                         end
                     end
                 end
@@ -281,7 +273,6 @@ function _G.EntregarEspada(jogador)
 
     local espada = criarEspada()
     espada.Parent = mochila
-    print("[SwordSystem] Espada entregue para " .. jogador.Name)
 end
 
 local function aoNascer(jogador)
@@ -303,5 +294,3 @@ Players.PlayerAdded:Connect(configurarJogador)
 for _, jogador in ipairs(Players:GetPlayers()) do
     configurarJogador(jogador)
 end
-
-print("[SwordSystem] Espada do Guerreiro carregada no servidor.")

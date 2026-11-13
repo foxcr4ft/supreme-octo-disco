@@ -64,7 +64,6 @@ local function obterOuCriarGuiReviver(jogador)
 
     botao.MouseButton1Click:Connect(function()
         guiReviver.Enabled = false -- Oculta a janela ao reviver
-        print("[Reviver] O jogador " .. jogador.Name .. " usou o reviver!")
 
         jogador:LoadCharacter()
         task.wait(0.3)
@@ -88,7 +87,6 @@ local function configurarJogador(jogador)
 
         local humanoid = personagem:WaitForChild("Humanoid")
         humanoid.Died:Connect(function()
-            print("[Reviver] O jogador " .. jogador.Name .. " caiu em combate!")
             task.delay(1, function()
                 if guiReviver then
                     guiReviver.Enabled = true -- Mostra o botão de reviver
@@ -119,8 +117,6 @@ local function zerarContadorDaArena()
     for _, jog in ipairs(Players:GetPlayers()) do
         _G.ZerarMoedasDaDungeon(jog)
     end
-
-    print("[WaveSystem] Contador da dungeon zerado ao entrar na Arena 1.")
 end
 
 --[[
@@ -139,7 +135,6 @@ local function acharPontoDeSpawn()
     end
 
     if spawnLocation and spawnLocation:IsA("BasePart") then
-        print("[WaveSystem] Ponto de spawn: " .. spawnLocation.Name .. " em " .. tostring(spawnLocation.Position))
         return spawnLocation.Position
     end
 
@@ -150,8 +145,6 @@ end
 -- Cria um esqueleto no ponto de spawn.
 -- Vida e dano crescem com o número da wave.
 local function spawnEsqueleto(wave)
-    print("[WaveSystem] Spawnando esqueleto da wave " .. wave)
-
     local pontoDeSpawn = acharPontoDeSpawn()
 
     -- Espalha os esqueletos em volta do spawn para não nascerem um dentro do outro
@@ -199,13 +192,10 @@ local function spawnEsqueleto(wave)
     esqueleto.PrimaryPart = root
     esqueleto.Parent = Workspace
 
-    print("[WaveSystem] " .. esqueleto.Name .. " criado com " .. vidaTotal .. " de vida.")
-
     -- A morte por dano chama humanoid.Died, que cuida das moedas e do Destroy.
     -- O Destroy só acontece aí dentro, então o esqueleto não é apagado ao nascer.
     humanoid.Died:Connect(function()
         inimigosVivos = inimigosVivos - 1
-        print("[WaveSystem] Esqueleto derrotado! Restam: " .. inimigosVivos)
 
         -- Identifica quem causou o golpe final pela tag "creator"
         -- (a tag é gravada pela espada, no SwordSystem)
@@ -214,10 +204,10 @@ local function spawnEsqueleto(wave)
             local jogadorMatador = tagCriador.Value
             if _G.AdicionarMoedas then
                 _G.AdicionarMoedas(jogadorMatador, 5)
-                print("[WaveSystem] +5 moedas para quem matou: " .. jogadorMatador.Name)
+                print("[WaveSystem] Esqueleto derrotado! +5 moedas para " .. jogadorMatador.Name)
             end
         else
-            print("[WaveSystem] Abate sem tag creator. Ninguém recebeu moedas.")
+            print("[WaveSystem] Esqueleto derrotado, sem autor identificado. Sem moedas.")
         end
 
         task.wait(1.5)
@@ -275,11 +265,10 @@ task.spawn(function()
 
     for w = 1, MAX_WAVES do
         waveAtual = w
-        print("--------------------------------------------------")
-        print("★ INICIANDO WAVE " .. waveAtual .. " DE " .. MAX_WAVES .. " ★")
-        print("--------------------------------------------------")
 
         if waveAtual < 5 then
+            print("[WaveSystem] Wave " .. waveAtual .. "/" .. MAX_WAVES .. " começou.")
+
             local qtdInimigos = 3 + (waveAtual * 2)
             for i = 1, qtdInimigos do
                 spawnEsqueleto(waveAtual)
@@ -290,10 +279,11 @@ task.spawn(function()
                 task.wait(0.5)
             end
 
-            print("[WaveSystem] Wave " .. waveAtual .. " concluída com sucesso!")
+            print("[WaveSystem] Wave " .. waveAtual .. "/" .. MAX_WAVES .. " concluída!")
             task.wait(3)
         else
-            print("[WaveSystem] ATENÇÃO! A WAVE 5 É O CHEFE FINAL!")
+            print("[WaveSystem] Wave 5: o chefe final apareceu!")
+
             if _G.IniciarLutaBoss then
                 _G.IniciarLutaBoss(CENTRO_ARENA + Vector3.new(0, 4, 0), function()
                     print("==================================================")
@@ -306,5 +296,3 @@ task.spawn(function()
         end
     end
 end)
-
-print("[WaveSystem] Sistema de Waves da Arena 1 carregado com sucesso!")

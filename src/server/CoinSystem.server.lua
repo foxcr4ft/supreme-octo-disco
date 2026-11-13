@@ -61,12 +61,9 @@ end
 
 local function configurarJogador(jogador)
     garantirMoedas(jogador)
-    print("[CoinSystem] Leaderstats criada para " .. jogador.Name)
 end
 
 Players.PlayerAdded:Connect(configurarJogador)
 for _, jogador in ipairs(Players:GetPlayers()) do
     configurarJogador(jogador)
 end
-
-print("[CoinSystem] Sistema de moedas carregado com sucesso!")
