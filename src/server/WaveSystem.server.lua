@@ -19,11 +19,12 @@
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
-local CENTRO_ARENA = Vector3.new(0, 5, 0) -- usado como reserva quando não há SpawnLocation
-local RAIO_SPAWN = 25
+-- Ponto de reserva quando não existe SpawnLocation no mapa
+local PONTO_RESERVA = Vector3.new(0, 5, 0)
 
--- Nome do SpawnLocation da Arena 1 (altere se o seu tiver outro nome)
-local NOME_SPAWN_ARENA = "Arena1Spawn"
+-- Centro da arena, usado para o boss e como último recurso de spawn
+local CENTRO_ARENA = Vector3.new(0, 5, 0)
+local RAIO_SPAWN = 25
 
 local waveAtual = 1
 local MAX_WAVES = 5
@@ -105,20 +106,29 @@ end
     ===================================================================
 --]]
 
--- Procura o SpawnLocation da Arena 1 no mapa.
--- Se não achar (ou se não estiver com CanCollide), usa o centro da arena.
+-- Procura o SpawnLocation do mapa.
+-- Se não achar, avisa no Output e usa Vector3.new(0, 5, 0).
 local function acharPontoDeSpawn()
-    local spawnArena = Workspace:FindFirstChild(NOME_SPAWN_ARENA, true)
-    if spawnArena and spawnArena:IsA("BasePart") then
-        return spawnArena.Position
+    local spawnLocation = Workspace:FindFirstChild("SpawnLocation")
+
+    if not spawnLocation then
+        spawnLocation = Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
     end
-    warn("[WaveSystem] SpawnLocation \"" .. NOME_SPAWN_ARENA .. "\" não encontrado. Usando o centro da arena.")
-    return CENTRO_ARENA
+
+    if spawnLocation and spawnLocation:IsA("BasePart") then
+        print("[WaveSystem] Ponto de spawn: " .. spawnLocation.Name .. " em " .. tostring(spawnLocation.Position))
+        return spawnLocation.Position
+    end
+
+    warn("[WaveSystem] SpawnLocation não encontrado. Usando Vector3.new(0, 5, 0).")
+    return PONTO_RESERVA
 end
 
--- Cria um esqueleto no ponto de spawn da arena.
+-- Cria um esqueleto no ponto de spawn.
 -- Vida e dano crescem com o número da wave.
 local function spawnEsqueleto(wave)
+    print("[WaveSystem] Spawnando esqueleto da wave " .. wave)
+
     local pontoDeSpawn = acharPontoDeSpawn()
 
     -- Espalha os esqueletos em volta do spawn para não nascerem um dentro do outro
@@ -166,6 +176,33 @@ local function spawnEsqueleto(wave)
     esqueleto.PrimaryPart = root
     esqueleto.Parent = Workspace
 
+    print("[WaveSystem] " .. esqueleto.Name .. " criado com " .. vidaTotal .. " de vida.")
+
+    -- A morte por dano chama humanoid.Died, que cuida das moedas e do Destroy.
+    -- O Destroy só acontece aí dentro, então o esqueleto não é apagado ao nascer.
+    humanoid.Died:Connect(function()
+        inimigosVivos = inimigosVivos - 1
+        print("[WaveSystem] Esqueleto derrotado! Restam: " .. inimigosVivos)
+
+        -- Identifica quem causou o golpe final pela tag "creator"
+        -- (a tag é gravada pela espada, no SwordSystem)
+        local tagCriador = humanoid:FindFirstChild("creator")
+        if tagCriador and tagCriador.Value and tagCriador.Value:IsA("Player") then
+            local jogadorMatador = tagCriador.Value
+            if _G.AdicionarMoedas then
+                _G.AdicionarMoedas(jogadorMatador, 5)
+                print("[WaveSystem] +5 moedas para quem matou: " .. jogadorMatador.Name)
+            end
+        else
+            print("[WaveSystem] Abate sem tag creator. Ninguém recebeu moedas.")
+        end
+
+        task.wait(1.5)
+        if esqueleto and esqueleto.Parent then
+            esqueleto:Destroy()
+        end
+    end)
+
     -- IA de perseguição do esqueleto ao jogador mais próximo
     task.spawn(function()
         while esqueleto and esqueleto.Parent and humanoid.Health > 0 do
@@ -197,30 +234,6 @@ local function spawnEsqueleto(wave)
                 end
             end
             task.wait(0.4)
-        end
-    end)
-
-    -- Morte do esqueleto: premia moedas APENAS para quem matou
-    humanoid.Died:Connect(function()
-        inimigosVivos = inimigosVivos - 1
-        print("[WaveSystem] Esqueleto derrotado! Restam: " .. inimigosVivos)
-
-        -- Identifica o jogador que causou o golpe final pela tag "creator"
-        -- (a tag é gravada pela espada, no SwordSystem)
-        local tagCriador = humanoid:FindFirstChild("creator")
-        if tagCriador and tagCriador.Value and tagCriador.Value:IsA("Player") then
-            local jogadorMatador = tagCriador.Value
-            if _G.AdicionarMoedas then
-                _G.AdicionarMoedas(jogadorMatador, 5)
-                print("[WaveSystem] +5 moedas para quem matou: " .. jogadorMatador.Name)
-            end
-        else
-            print("[WaveSystem] Abate sem tag creator. Ninguém recebeu moedas.")
-        end
-
-        task.wait(1.5)
-        if esqueleto then
-            esqueleto:Destroy()
         end
     end)
 
