@@ -16,6 +16,11 @@
     Os dois gravam a tag "creator" em quem foi atingido, e é essa tag
     que o WaveSystem e o BossSystem leem para premiar o abate.
 
+    IMPORTANTE: o efeito do swing nunca usa Part que colide, nem mexe no
+    CFrame do Handle da Tool. As duas coisas quebravam o personagem:
+    o CFrame do Handle gira o corpo inteiro, e a Part ancorada virava
+    uma parede invisível na frente do jogador.
+
     Outros scripts podem pedir a espada com:
       _G.EntregarEspada(jogador)
 --]]
@@ -69,6 +74,36 @@ local function ehInimigo(modelo, personagemDoJogador)
 end
 
 --[[
+    Efeito visual do swing: um arco fino na frente do jogador.
+    A Part NÃO colide, não é tocável e não entra nas checagens de física,
+    então não vira parede e não empurra ninguém.
+--]]
+local function mostrarSwing(personagem)
+    local root = personagem:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return
+    end
+
+    local frente = root.CFrame.LookVector
+    local centro = root.Position + (frente * (ALCANCE_CLIQUE * 0.6))
+
+    local swing = Instance.new("Part")
+    swing.Name = "SwingGuerreiro"
+    swing.Size = Vector3.new(5, 3, 0.3)
+    swing.CFrame = CFrame.new(centro, centro + frente)
+    swing.BrickColor = BrickColor.new("Cyan")
+    swing.Material = Enum.Material.Neon
+    swing.Transparency = 0.6
+    swing.Anchored = true -- fixa só para não cair; sem colisão e sem toque
+    swing.CanCollide = false -- não é parede
+    swing.CanTouch = false
+    swing.CanQuery = false -- não aparece nas checagens de física
+    swing.Massless = true
+    swing.Parent = Workspace
+    Debris:AddItem(swing, 0.2)
+end
+
+--[[
     Ataque do clique: swing rápido na frente do jogador.
     Atinge inimigos num raio de ALCANCE_CLIQUE studs à frente.
 --]]
@@ -78,27 +113,8 @@ local function atacarNaFrente(jogador, personagem, tool)
         return
     end
 
-    -- Swing visual: uma lâmina que varre a frente do jogador
     local frente = root.CFrame.LookVector
-    local centro = root.Position + (frente * (ALCANCE_CLIQUE * 0.6))
-
-    local swing = Instance.new("Part")
-    swing.Name = "SwingGuerreiro"
-    swing.Size = Vector3.new(6, 4, 0.4)
-    swing.CFrame = CFrame.new(centro, centro + frente)
-    swing.BrickColor = BrickColor.new("Cyan")
-    swing.Material = Enum.Material.Neon
-    swing.Transparency = 0.55
-    swing.Anchored = true
-    swing.CanCollide = false
-    swing.Parent = Workspace
-    Debris:AddItem(swing, 0.25)
-
-    -- A espada gira rápido na mão durante o swing
-    local handle = tool:FindFirstChild("Handle")
-    if handle and handle:IsA("BasePart") then
-        handle.CFrame = handle.CFrame * CFrame.Angles(0, 0, math.rad(180))
-    end
+    mostrarSwing(personagem)
 
     -- Dano só em inimigos, na frente do jogador
     local atingidos = 0
@@ -218,6 +234,8 @@ local function criarEspada()
                 anel.Transparency = 0.4
                 anel.Anchored = true
                 anel.CanCollide = false
+                anel.CanTouch = false
+                anel.CanQuery = false
                 anel.Parent = Workspace
                 Debris:AddItem(anel, 0.4)
 
