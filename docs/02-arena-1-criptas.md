@@ -8,10 +8,8 @@ Este guia explica, em linguagem simples e prática, como colocar os scripts da *
 Nesta primeira versão jogável, você tem:
 1. **Sistema de Moedas (`CoinSystem.server.lua`)**: Mostra as moedas dos jogadores no topo direito da tela (`leaderstats`) e premia quem derrotar os inimigos.
 2. **Sistema do Chefe (`BossSystem.server.lua`)**: Cria o Boss *Lorde Esqueleto Malakar* na Wave 5 com 3 ataques especiais (Golpe Sísmico, Invocação de Servos e Carga Brutal).
-3. **Sistema de Waves e Guerreiro (`WaveSystem.server.lua`)**:
-   - Entrega a **Espada do Guerreiro** (ataque no clique + habilidade de giro *Whirlwind* em área).
-   - Gera **5 ondas (waves)** crescentes de esqueletos.
-   - Oferece o **botão de reviver** com 50% de vida na arena (gancho pronto para o Dev Product com Robux).
+3. **Sistema de Waves (`WaveSystem.server.lua`)**: Gera **5 ondas** de esqueletos, chama o boss na wave 5 e oferece o **botão de reviver** com 50% de vida. Não cria a espada.
+4. **Espada do Guerreiro (`SwordSystem.server.lua`)**: Cria a Tool no servidor, sem Script interno. O clique dá dano com cooldown e grava a tag `creator`. O giro sai no servidor a cada 8 segundos, só em inimigos.
 
 ---
 
@@ -37,11 +35,16 @@ Nesta primeira versão jogável, você tem:
 3. Abra o script, apague o texto padrão.
 4. Cole o código do arquivo `src/server/BossSystem.server.lua` dentro dele.
 
-### Passo 5: Colar o `WaveSystem`
-1. Em **ServerScriptService**, clique no **`+`** e adicione um terceiro **Script**.
+### Passo 5: Colar o `SwordSystem`
+1. Em **ServerScriptService**, clique no **`+`** e adicione outro **Script**.
+2. Renomeie para: `SwordSystem`.
+3. Apague o texto padrão e cole o código de `src/server/SwordSystem.server.lua`.
+4. Não crie um Script dentro da espada. O dano já está neste arquivo.
+
+### Passo 6: Colar o `WaveSystem`
+1. Em **ServerScriptService**, clique no **`+`** e adicione outro **Script**.
 2. Renomeie para: `WaveSystem`.
-3. Abra o script, apague o texto padrão.
-4. Cole o código do arquivo `src/server/WaveSystem.server.lua` dentro dele.
+3. Apague o texto padrão e cole o código de `src/server/WaveSystem.server.lua`.
 
 ---
 
@@ -49,9 +52,9 @@ Nesta primeira versão jogável, você tem:
 
 1. No menu superior do Roblox Studio, clique no botão azul **Play** (ou aperte `F5`).
 2. **Equipando a Arma:**
-   - Seu personagem vai nascer e automaticamente receberá a **Espada do Guerreiro** na barra de itens (tecla `1`).
-   - Equipe a espada e use o **botão esquerdo do mouse** para golpear os esqueletos.
-   - A habilidade de **Giro da Morte (Whirlwind)** ativa um anel de corte que atinge todos os inimigos ao seu redor.
+   - O personagem nasce e recebe a **Espada do Guerreiro** na barra de itens (tecla `1`).
+   - Equipe a espada e use o **botão esquerdo do mouse** para golpear. Há cooldown de 0,5 s.
+   - O **giro** sai sozinho a cada 8 segundos enquanto a espada estiver equipada. Só acerta inimigos.
 3. **Sobrevivendo às Waves:**
    - **Wave 1:** 5 Esqueletos.
    - **Wave 2:** 7 Esqueletos (mais rápidos).
@@ -59,16 +62,14 @@ Nesta primeira versão jogável, você tem:
    - **Wave 4:** 11 Esqueletos (horda pesada).
    - **Wave 5:** Chefe *Lorde Esqueleto Malakar* com barra de vida gigante na tela.
 4. **Ganhando Moedas:**
-   - Cada esqueleto comum derrotado dá **5 moedas**.
-   - O Boss derrotado dá **100 moedas**.
-   - O saldo acumulado aparece no canto superior direito da tela (`Moedas`).
+   - Cada esqueleto comum derrotado dá **5 moedas** para quem tem a tag `creator`.
+   - O Boss derrotado dá **100 moedas** só para quem lutou.
+   - O saldo aparece no canto superior direito (`Moedas`).
 5. **Se você morrer:**
-   - Uma janela aparecerá na tela com o botão: **"★ Reviver na Arena (50% HP) ★"**.
-   - Ao clicar, seu herói ressurge imediatamente no combate pronto para continuar a batalha!
+   - Uma janela aparece com o botão **"★ Reviver na Arena (50% HP) ★"**.
+   - Ao clicar, o herói ressurge com metade da vida e a espada, se ainda não tiver uma.
 
 ---
 
 ## 4. Onde Entrará a Monetização Real (Robux)
-No código dos scripts, os pontos de integração com o `MarketplaceService` do Roblox já estão sinalizados:
-- **Reviver na Arena**: No `WaveSystem.server.lua`, basta conectar o clique do botão com `MarketplaceService:PromptProductPurchase` usando o ID do produto de 25 Robux.
-- **Pacotes de Moedas**: No `CoinSystem.server.lua`, a função `ProcessarCompraDeMoedas` já está mapeada para conceder os pacotes de 100, 500 ou 1500 moedas após a confirmação do pagamento.
+O botão de reviver no `WaveSystem.server.lua` é o gancho para o Dev Product. A compra com Robux ainda não está ligada: o clique só revive na arena.
