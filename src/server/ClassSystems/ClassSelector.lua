@@ -9,11 +9,13 @@
 
     CONTROLE DE ARMA ÚNICA:
     A classe escolhida é gravada no próprio jogador, no atributo
-    "ClasseEscolhida". No respawn, este script limpa TODAS as armas de
-    classe da mochila e do corpo e entrega apenas a da classe salva.
-    É isso que impede o Mago, o Arqueiro e o Ladino de ficarem com a
-    Espada do Guerreiro junto (o SwordSystem entrega ela sozinho no
-    CharacterAdded).
+    "ClasseEscolhida". Este script VIGIA a mochila: quando uma arma de
+    classe entra e não é a da classe escolhida, ela sai na hora.
+
+    Isso é de propósito. O SwordSystem entrega a Espada do Guerreiro
+    sozinho, 0,4 s depois do respawn. Uma limpeza feita uma vez só não
+    resolvia: a Espada chegava DEPOIS dela e ficava na barra. Com a vigia
+    ligada, a ordem de carregamento dos scripts deixa de importar.
 
     Classes disponíveis:
       Guerreiro - Espada do Guerreiro (SwordSystem, já existente)
@@ -71,9 +73,52 @@ local function acharClasse(nome)
 end
 
 --[[
+    Devolve o nome da arma que a classe do jogador deve ter.
+    É a única arma de classe permitida na barra dele.
+--]]
+local function armaDaClasse(jogador)
+    local nome = jogador:GetAttribute(ATRIBUTO_CLASSE) or classeEscolhida[jogador]
+    local classe = nome and acharClasse(nome)
+    if not classe then
+        return nil
+    end
+    return classe.tool
+end
+
+--[[
+    VIGIA a mochila do jogador.
+
+    Quando uma arma de classe entra na mochila e não é a da classe
+    escolhida, ela é removida na hora. É isso que impede o Mago, o
+    Arqueiro e o Ladino de ficarem com a Espada do Guerreiro junto —
+    mesmo que o SwordSystem a entregue depois deste script rodar.
+--]]
+local function vigiarMochila(jogador)
+    local mochila = jogador:WaitForChild("Backpack")
+
+    mochila.ChildAdded:Connect(function(arma)
+        local permitida = armaDaClasse(jogador)
+        if not permitida or arma.Name == permitida then
+            return
+        end
+
+        -- Só mexe em arma de classe; outras ferramentas ficam em paz
+        for _, classe in ipairs(CLASSES) do
+            if classe.tool == arma.Name then
+                task.defer(function()
+                    if arma and arma.Parent then
+                        arma:Destroy()
+                    end
+                end)
+                return
+            end
+        end
+    end)
+end
+
+--[[
     Tira da mochila e do corpo TODAS as armas de classe.
-    Usada ao trocar de classe e também no respawn, para nunca sobrar
-    uma arma antiga junto com a nova.
+    Usada ao trocar de classe e também no respawn.
 --]]
 local function limparArmasDeClasse(jogador)
     local mochila = jogador:FindFirstChild("Backpack")
@@ -153,14 +198,13 @@ local function criarMenu(jogador)
         botao.MouseButton1Click:Connect(function()
             classeEscolhida[jogador] = classe.nome
 
-            -- Marca a classe no próprio jogador. É esse atributo que os
-            -- outros scripts leem, então ninguém entrega arma errada.
+            -- Grava a classe no próprio jogador. É esse atributo que a
+            -- vigia da mochila lê.
             jogador:SetAttribute(ATRIBUTO_CLASSE, classe.nome)
 
             menu.Enabled = false
 
-            -- Tira TODAS as armas de classe antes de entregar a nova.
-            -- É isso que impede de ficar com duas armas na barra.
+            -- Tira as armas antigas antes de entregar a nova
             limparArmasDeClasse(jogador)
 
             local personagem = jogador.Character
@@ -197,7 +241,8 @@ end
 
 --[[
     Entrega de novo a Tool da classe já escolhida (usado no renascimento).
-    Limpa as armas antes, para o jogador nunca ficar com duas.
+    A vigia da mochila cuida da Espada que o SwordSystem entrega depois;
+    aqui só se garante que a arma certa esteja na mão.
 --]]
 local function reentregarClasse(jogador)
     -- Lê o atributo: a escolha sobrevive mesmo se este script recarregar
@@ -213,13 +258,12 @@ local function reentregarClasse(jogador)
 
     task.wait(0.3)
 
-    -- O SwordSystem entrega a Espada sozinho no CharacterAdded.
-    -- Aqui ela sai de novo se a classe for outra, então nunca sobram duas armas.
+    -- Limpa o que já estiver lá e entrega só a arma da classe salva.
+    -- A vigia cobre a Espada que o SwordSystem entrega 0,4 s depois.
     limparArmasDeClasse(jogador)
 
     local personagem = jogador.Character
 
-    -- Aplica os atributos e entrega APENAS a arma da classe salva
     if personagem and classe.atributos and _G[classe.atributos] then
         _G[classe.atributos](personagem)
     end
@@ -234,6 +278,9 @@ end
 local function configurarJogador(jogador)
     classeEscolhida[jogador] = nil
     jogador:SetAttribute(ATRIBUTO_CLASSE, nil)
+
+    -- A vigia começa junto com o jogador, antes de qualquer respawn
+    vigiarMochila(jogador)
 
     jogador.CharacterAdded:Connect(function()
         -- Se já escolheu antes, entrega a mesma classe direto.
