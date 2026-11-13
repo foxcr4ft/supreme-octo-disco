@@ -10,13 +10,13 @@
       2. Coloca as 4 tochas com PointLight (luz quente) e fumaça.
       3. Cria o NPC "Mercador" (só visual, ainda sem loja).
       4. Cria o portal "Entrar na Arena 1".
-      5. Leva o jogador para o Hub quando ele nasce ou morre.
+      5. Leva o jogador para o Hub quando ele nasce.
       6. Quando ele toca no portal, manda para a Arena 1.
 
-    NÃO MEXE em nada da arena. Só cria coisas novas e usa _G dos outros
-    sistemas (o ClassSelector já mostra o menu sozinho no spawn).
-
-    NÃO cria a parte da arena: quem faz isso é o ArenaMapSystem.
+    TASK 005: o respawn respeita o revive pago. Quem usou o botão
+    "Reviver na Arena" tem o atributo RevivePago marcado pelo WaveSystem,
+    e neste respawn ele NÃO volta para o Hub — renasce dentro da arena,
+    com a run intacta.
 --]]
 
 local Players = game:GetService("Players")
@@ -27,16 +27,11 @@ local NOME_ARENA = "Arena1"
 local NOME_SPAWN_HUB = "SpawnHub"
 local NOME_SPAWN_ARENA = "SpawnArena"
 
--- Onde o Hub fica no mundo. Bem longe da arena para nada colidir.
 local CENTRO_HUB = Vector3.new(0, 100, 0)
-
--- Tamanho da sala do Hub
 local TAMANHO_SALA = Vector3.new(90, 24, 90)
 
---[[
-    Cria uma Part ancorada e devolve ela.
-    Usado para chão, paredes e teto.
---]]
+local ATRIBUTO_REVIVE_PAGO = "RevivePago"
+
 local function criarPart(nome, tamanho, posicao, cor, material, pai)
     local part = Instance.new("Part")
     part.Name = nome
@@ -49,10 +44,6 @@ local function criarPart(nome, tamanho, posicao, cor, material, pai)
     return part
 end
 
---[[
-    Cria uma tocha: um poste com uma chama neon, uma luz quente e fumaça.
-    A luz é o PointLight, que dá o clima acolhedor do Hub.
---]]
 local function criarTocha(posicao, pai)
     local tocha = Instance.new("Model")
     tocha.Name = "TochaHub"
@@ -70,7 +61,6 @@ local function criarTocha(posicao, pai)
     chama.Material = Enum.Material.Neon
     chama.Parent = tocha
 
-    -- Luz quente da tocha
     local luz = Instance.new("PointLight")
     luz.Name = "LuzTocha"
     luz.Color = Color3.fromRGB(255, 170, 80)
@@ -78,7 +68,6 @@ local function criarTocha(posicao, pai)
     luz.Range = 28
     luz.Parent = chama
 
-    -- Fumaça subindo, para dar vida
     local fumaca = Instance.new("ParticleEmitter")
     fumaca.Name = "Fumaca"
     fumaca.Texture = "rbxasset://textures/particles/smoke_main.dds"
@@ -97,9 +86,6 @@ local function criarTocha(posicao, pai)
     return tocha
 end
 
---[[
-    Cria o Hub inteiro: sala, tochas, NPC Mercador e portal.
---]]
 local function criarHub()
     local hubExistente = Workspace:FindFirstChild(NOME_HUB)
     if hubExistente then
@@ -114,7 +100,6 @@ local function criarHub()
     local meiaLargura = TAMANHO_SALA.X / 2
     local meiaProfundidade = TAMANHO_SALA.Z / 2
 
-    -- Chão
     criarPart(
         "ChaoHub",
         Vector3.new(TAMANHO_SALA.X, 2, TAMANHO_SALA.Z),
@@ -124,7 +109,6 @@ local function criarHub()
         hub
     )
 
-    -- Teto
     criarPart(
         "TetoHub",
         Vector3.new(TAMANHO_SALA.X, 2, TAMANHO_SALA.Z),
@@ -134,7 +118,6 @@ local function criarHub()
         hub
     )
 
-    -- Quatro paredes
     criarPart(
         "ParedeNorte",
         Vector3.new(TAMANHO_SALA.X, TAMANHO_SALA.Y, 2),
@@ -168,7 +151,6 @@ local function criarHub()
         hub
     )
 
-    -- 4 tochas nos cantos, com luz quente
     local alturaTocha = CENTRO_HUB.Y - meiaAltura + 3
     local recuo = 10
     criarTocha(Vector3.new(CENTRO_HUB.X - meiaLargura + recuo, alturaTocha, CENTRO_HUB.Z - meiaProfundidade + recuo), hub)
@@ -176,7 +158,6 @@ local function criarHub()
     criarTocha(Vector3.new(CENTRO_HUB.X - meiaLargura + recuo, alturaTocha, CENTRO_HUB.Z + meiaProfundidade - recuo), hub)
     criarTocha(Vector3.new(CENTRO_HUB.X + meiaLargura - recuo, alturaTocha, CENTRO_HUB.Z + meiaProfundidade - recuo), hub)
 
-    -- SpawnLocation do Hub: é aqui que o jogador nasce
     local spawnHub = Instance.new("SpawnLocation")
     spawnHub.Name = NOME_SPAWN_HUB
     spawnHub.Size = Vector3.new(8, 1, 8)
@@ -188,7 +169,6 @@ local function criarHub()
     spawnHub.Duration = 0
     spawnHub.Parent = hub
 
-    -- NPC Mercador: só visual, sem loja
     local mercador = Instance.new("Model")
     mercador.Name = "Mercador"
 
@@ -215,7 +195,6 @@ local function criarHub()
     local humanoidMercador = Instance.new("Humanoid")
     humanoidMercador.Parent = mercador
 
-    -- Nome flutuando acima do Mercador
     local etiqueta = Instance.new("BillboardGui")
     etiqueta.Name = "Etiqueta"
     etiqueta.Size = UDim2.new(0, 220, 0, 50)
@@ -247,7 +226,6 @@ local function criarHub()
     mercador.PrimaryPart = corpoMercador
     mercador.Parent = hub
 
-    -- Portal para a Arena 1
     local portal = Instance.new("Part")
     portal.Name = "PortalArena1"
     portal.Size = Vector3.new(12, 16, 1)
@@ -265,7 +243,6 @@ local function criarHub()
     luzPortal.Range = 30
     luzPortal.Parent = portal
 
-    -- Texto "Entrar na Arena 1" acima do portal
     local placa = Instance.new("BillboardGui")
     placa.Name = "TextoPortal"
     placa.Size = UDim2.new(0, 320, 0, 60)
@@ -288,9 +265,6 @@ local function criarHub()
     return hub
 end
 
---[[
-    Devolve a posição de nascimento no Hub.
---]]
 local function posicaoDoSpawnHub()
     local hub = Workspace:FindFirstChild(NOME_HUB)
     if hub then
@@ -303,9 +277,6 @@ local function posicaoDoSpawnHub()
     return CENTRO_HUB + Vector3.new(0, 6, 22)
 end
 
---[[
-    Leva o personagem do jogador para o Hub, parado e seguro.
---]]
 local function levarParaHub(jogador)
     local personagem = jogador.Character
     if not personagem then
@@ -320,10 +291,6 @@ local function levarParaHub(jogador)
     root.CFrame = CFrame.new(posicaoDoSpawnHub())
 end
 
---[[
-    Manda o jogador para a Arena 1, no SpawnArena.
-    Usado quando ele toca no portal.
---]]
 local function levarParaArena(jogador)
     local personagem = jogador.Character
     if not personagem then
@@ -335,7 +302,6 @@ local function levarParaArena(jogador)
         return
     end
 
-    -- Procura o SpawnArena dentro de Arena1
     local destino = nil
     local arena = Workspace:FindFirstChild(NOME_ARENA)
     if arena then
@@ -346,7 +312,6 @@ local function levarParaArena(jogador)
     end
 
     if not destino then
-        -- Se a arena ainda não tem o SpawnArena, avisa e não teleporta
         warn("[HubSystem] SpawnArena não encontrado dentro de Workspace/" .. NOME_ARENA .. ". O portal não vai teleportar.")
         return
     end
@@ -355,9 +320,6 @@ local function levarParaArena(jogador)
     print("[HubSystem] " .. jogador.Name .. " entrou na Arena 1.")
 end
 
---[[
-    Liga o toque do portal.
---]]
 local function ligarPortal(portal)
     local ultimoUso = {}
 
@@ -372,7 +334,6 @@ local function ligarPortal(portal)
             return
         end
 
-        -- Evita disparar várias vezes seguidas no mesmo toque
         local agora = os.clock()
         if ultimoUso[jogador] and (agora - ultimoUso[jogador]) < 3 then
             return
@@ -383,19 +344,21 @@ local function ligarPortal(portal)
     end)
 end
 
---[[
-    Configura o jogador: leva para o Hub ao nascer.
-    O ClassSelector já mostra o menu de classe sozinho.
---]]
 local function configurarJogador(jogador)
     jogador.CharacterAdded:Connect(function()
-        -- Espera o personagem montar antes de mover
         task.wait(0.3)
+
+        -- Respawn de revive pago: fica na arena, não volta para o Hub
+        if jogador:GetAttribute(ATRIBUTO_REVIVE_PAGO) then
+            jogador:SetAttribute(ATRIBUTO_REVIVE_PAGO, false)
+            print("[HubSystem] " .. jogador.Name .. " reviveu na arena. Não volta para o Hub.")
+            return
+        end
+
         levarParaHub(jogador)
     end)
 end
 
--- Monta tudo
 local hub = criarHub()
 
 local portal = hub:FindFirstChild("PortalArena1")
