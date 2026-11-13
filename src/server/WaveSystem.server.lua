@@ -7,8 +7,10 @@
     Este script controla o fluxo principal da Arena 1 - Criptas Esquecidas:
       1. 5 Waves progressivas de esqueletos com dificuldade crescente.
       2. Entrega da classe Guerreiro (Espada com Ataque Básico + Giro Whirlwind).
-      3. Sistema de Reviver com 50% de vida (gancho para o Dev Product com Robux).
-      4. Integração na Wave 5 com o BossSystem.
+      3. Sistema de Reviver com 50% de vida (ResetOnSpawn = false, sem duplicar espada).
+      4. Premiação de moedas apenas para o jogador que derrotou o inimigo.
+      5. Whirlwind atinge apenas inimigos (Esqueletos / Boss), nunca outros jogadores.
+      6. Integração na Wave 5 com o BossSystem.
 --]]
 
 local Workspace = game:GetService("Workspace")
@@ -22,7 +24,11 @@ local waveAtual = 1
 local MAX_WAVES = 5
 local inimigosVivos = 0
 
--- SISTEMA DE CLASSE: GUERREIRO
+--[[
+    ===================================================================
+    SISTEMA DE CLASSE: GUERREIRO (Espada + Habilidade de Giro Whirlwind)
+    ===================================================================
+--]]
 local function criarEspadaGuerreiro()
     local tool = Instance.new("Tool")
     tool.Name = "Espada do Guerreiro"
@@ -49,13 +55,16 @@ local function criarEspadaGuerreiro()
     weld.Part1 = ponta
     weld.Parent = handle
 
+    -- Script da espada com ataque básico e giro Whirlwind
     local scriptEspada = Instance.new("Script")
     scriptEspada.Name = "LogicaGuerreiro"
     scriptEspada.Source = [[
         local tool = script.Parent
         local handle = tool:WaitForChild("Handle")
+        local Players = game:GetService("Players")
         local podeAtacar = true
 
+        -- Ataque básico com o clique do mouse
         tool.Activated:Connect(function()
             if not podeAtacar then return end
             podeAtacar = false
@@ -68,10 +77,26 @@ local function criarEspadaGuerreiro()
             conexao = handle.Touched:Connect(function(hit)
                 local inimigoChar = hit.Parent
                 if inimigoChar and inimigoChar ~= char then
-                    local inimigoHum = inimigoChar:FindFirstChild("Humanoid")
-                    if inimigoHum and inimigoHum.Health > 0 then
-                        inimigoHum:TakeDamage(25)
-                        print("[Guerreiro] Golpe de espada causou 25 de dano!")
+                    -- Garante que o alvo não seja outro jogador
+                    local ehOutroJogador = Players:GetPlayerFromCharacter(inimigoChar)
+                    if not ehOutroJogador then
+                        local inimigoHum = inimigoChar:FindFirstChild("Humanoid")
+                        if inimigoHum and inimigoHum.Health > 0 then
+                            -- Tag do atacante para saber quem causou o abate
+                            local tagCriador = inimigoHum:FindFirstChild("creator")
+                            if not tagCriador then
+                                tagCriador = Instance.new("ObjectValue")
+                                tagCriador.Name = "creator"
+                                tagCriador.Parent = inimigoHum
+                            end
+                            local jogAtacante = Players:GetPlayerFromCharacter(char)
+                            if jogAtacante then
+                                tagCriador.Value = jogAtacante
+                            end
+
+                            inimigoHum:TakeDamage(25)
+                            print("[Guerreiro] Golpe de espada causou 25 de dano!")
+                        end
                     end
                 end
             end)
@@ -81,12 +106,15 @@ local function criarEspadaGuerreiro()
             podeAtacar = true
         end)
 
+        -- Habilidade Especial: Giro Whirlwind em área
+        -- Atinge APENAS inimigos (Esqueletos / Boss), NUNCA outros jogadores
         task.spawn(function()
             while tool and tool.Parent do
                 task.wait(8)
                 local char = tool.Parent
                 local root = char:FindFirstChild("HumanoidRootPart")
                 if root and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+                    -- Efeito visual do giro de corte
                     local anelGiro = Instance.new("Part")
                     anelGiro.Shape = Enum.PartType.Cylinder
                     anelGiro.Size = Vector3.new(0.5, 16, 16)
@@ -99,11 +127,29 @@ local function criarEspadaGuerreiro()
                     anelGiro.Parent = workspace
                     game:GetService("Debris"):AddItem(anelGiro, 0.4)
 
+                    -- Dano em área estritamente em inimigos
                     for _, objeto in ipairs(workspace:GetChildren()) do
                         if objeto:FindFirstChild("Humanoid") and objeto ~= char then
-                            local rootInimigo = objeto:FindFirstChild("HumanoidRootPart")
-                            if rootInimigo and (rootInimigo.Position - root.Position).Magnitude <= 14 then
-                                objeto.Humanoid:TakeDamage(50)
+                            -- Verifica se o objeto NÃO é um jogador
+                            local ehJogador = Players:GetPlayerFromCharacter(objeto)
+                            if not ehJogador then
+                                local rootInimigo = objeto:FindFirstChild("HumanoidRootPart")
+                                if rootInimigo and (rootInimigo.Position - root.Position).Magnitude <= 14 then
+                                    -- Registra a tag de quem causou o dano
+                                    local tagCriador = objeto.Humanoid:FindFirstChild("creator")
+                                    if not tagCriador then
+                                        tagCriador = Instance.new("ObjectValue")
+                                        tagCriador.Name = "creator"
+                                        tagCriador.Parent = objeto.Humanoid
+                                    end
+                                    local jogAtacante = Players:GetPlayerFromCharacter(char)
+                                    if jogAtacante then
+                                        tagCriador.Value = jogAtacante
+                                    end
+
+                                    objeto.Humanoid:TakeDamage(50)
+                                    print("[Guerreiro] Whirlwind atingiu inimigo: " .. objeto.Name)
+                                end
                             end
                         end
                     end
@@ -116,56 +162,97 @@ local function criarEspadaGuerreiro()
     return tool
 end
 
-local function equiparGuerreiro(jogador)
-    jogador.CharacterAdded:Connect(function(personagem)
-        task.wait(0.5)
+--[[
+    Função auxiliar para garantir que o jogador tenha a espada SEM duplicar
+--]]
+local function garantirEspada(jogador)
+    local temNaMochila = jogador.Backpack:FindFirstChild("Espada do Guerreiro")
+    local temNoPersonagem = jogador.Character and jogador.Character:FindFirstChild("Espada do Guerreiro")
+
+    if not temNaMochila and not temNoPersonagem then
         local espada = criarEspadaGuerreiro()
         espada.Parent = jogador.Backpack
+        print("[Guerreiro] Espada entregue para " .. jogador.Name)
+    else
+        print("[Guerreiro] " .. jogador.Name .. " já possui a espada, evitando duplicação.")
+    end
+end
+
+--[[
+    ===================================================================
+    SISTEMA DE REVIVER E CONTROLE DE SPAWN
+    ===================================================================
+--]]
+local function configurarJogador(jogador)
+    -- Cria a interface de reviver com ResetOnSpawn = false para não sumir ao renascer
+    local function obterOuCriarGuiReviver()
+        local playerGui = jogador:WaitForChild("PlayerGui")
+        local guiReviver = playerGui:FindFirstChild("ReviverGui")
+
+        if not guiReviver then
+            guiReviver = Instance.new("ScreenGui")
+            guiReviver.Name = "ReviverGui"
+            guiReviver.ResetOnSpawn = false -- GUI NÃO some ao renascer
+            guiReviver.Enabled = false
+            guiReviver.Parent = playerGui
+
+            local botao = Instance.new("TextButton")
+            botao.Name = "BotaoReviver"
+            botao.Size = UDim2.new(0, 260, 0, 60)
+            botao.Position = UDim2.new(0.5, -130, 0.7, 0)
+            botao.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+            botao.Text = "★ Reviver na Arena (50% HP) ★"
+            botao.TextColor3 = Color3.fromRGB(255, 255, 255)
+            botao.Font = Enum.Font.SourceSansBold
+            botao.TextSize = 16
+            botao.Parent = guiReviver
+
+            botao.MouseButton1Click:Connect(function()
+                guiReviver.Enabled = false -- Oculta a janela ao reviver
+                print("[Reviver] O jogador " .. jogador.Name .. " usou o reviver!")
+
+                jogador:LoadCharacter()
+                task.wait(0.3)
+
+                if jogador.Character and jogador.Character:FindFirstChild("Humanoid") then
+                    jogador.Character.Humanoid.Health = jogador.Character.Humanoid.MaxHealth * 0.5
+                    garantirEspada(jogador) -- Entrega sem duplicar
+                end
+            end)
+        end
+
+        return guiReviver
+    end
+
+    jogador.CharacterAdded:Connect(function(personagem)
+        task.wait(0.5)
+        garantirEspada(jogador)
+
+        local guiReviver = obterOuCriarGuiReviver()
+        guiReviver.Enabled = false -- Começa oculta enquanto vivo
 
         local humanoid = personagem:WaitForChild("Humanoid")
         humanoid.Died:Connect(function()
             print("[Reviver] O jogador " .. jogador.Name .. " caiu em combate!")
-            
             task.delay(1, function()
-                if jogador:FindFirstChild("PlayerGui") then
-                    local guiReviver = Instance.new("ScreenGui")
-                    guiReviver.Name = "ReviverGui"
-                    guiReviver.ResetOnSpawn = true
-                    guiReviver.Parent = jogador.PlayerGui
-
-                    local botao = Instance.new("TextButton")
-                    botao.Size = UDim2.new(0, 240, 0, 60)
-                    botao.Position = UDim2.new(0.5, -120, 0.7, 0)
-                    botao.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-                    botao.Text = "★ Reviver na Arena (50% HP) ★"
-                    botao.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    botao.Font = Enum.Font.SourceSansBold
-                    botao.TextSize = 16
-                    botao.Parent = guiReviver
-
-                    botao.MouseButton1Click:Connect(function()
-                        guiReviver:Destroy()
-                        print("[Reviver] Jogador reviveu na arena!")
-                        jogador:LoadCharacter()
-                        task.wait(0.3)
-                        if jogador.Character and jogador.Character:FindFirstChild("Humanoid") then
-                            jogador.Character.Humanoid.Health = jogador.Character.Humanoid.MaxHealth * 0.5
-                            local esp = criarEspadaGuerreiro()
-                            esp.Parent = jogador.Backpack
-                        end
-                    end)
+                if guiReviver then
+                    guiReviver.Enabled = true -- Mostra o botão de reviver
                 end
             end)
         end)
     end)
 end
 
-Players.PlayerAdded:Connect(equiparGuerreiro)
+Players.PlayerAdded:Connect(configurarJogador)
 for _, jog in ipairs(Players:GetPlayers()) do
-    equiparGuerreiro(jog)
+    configurarJogador(jog)
 end
 
--- SPAWN DOS ESQUELETOS (WAVES 1 A 4)
+--[[
+    ===================================================================
+    SPAWN DOS ESQUELETOS (WAVES 1 A 4)
+    ===================================================================
+--]]
 local function spawnEsqueleto(nivelWave)
     local angulo = math.random() * math.pi * 2
     local distancia = math.random(8, RAIO_SPAWN)
@@ -193,6 +280,7 @@ local function spawnEsqueleto(nivelWave)
     esqueleto.PrimaryPart = root
     esqueleto.Parent = Workspace
 
+    -- IA de perseguição do esqueleto ao jogador mais próximo
     task.spawn(function()
         while esqueleto and esqueleto.Parent and humanoid.Health > 0 do
             local alvoMaisProximo = nil
@@ -225,14 +313,21 @@ local function spawnEsqueleto(nivelWave)
         end
     end)
 
+    -- Morte do esqueleto: premia moedas APENAS para quem matou
     humanoid.Died:Connect(function()
         inimigosVivos = inimigosVivos - 1
         print("[WaveSystem] Esqueleto derrotado! Restam: " .. inimigosVivos)
 
-        for _, jog in ipairs(Players:GetPlayers()) do
+        -- Identifica o jogador que causou o golpe final pelo valor da tag "creator"
+        local tagCriador = humanoid:FindFirstChild("creator")
+        if tagCriador and tagCriador.Value and tagCriador.Value:IsA("Player") then
+            local jogadorMatador = tagCriador.Value
             if _G.AdicionarMoedas then
-                _G.AdicionarMoedas(jog, 5)
+                _G.AdicionarMoedas(jogadorMatador, 5)
+                print("[WaveSystem] +5 moedas entregues exclusivamente para o autor do abate: " .. jogadorMatador.Name)
             end
+        else
+            print("[WaveSystem] Abate sem atacante identificado ou por perigo ambiental.")
         end
 
         task.wait(1.5)
@@ -242,7 +337,11 @@ local function spawnEsqueleto(nivelWave)
     inimigosVivos = inimigosVivos + 1
 end
 
--- LOOP PRINCIPAL DA ARENA
+--[[
+    ===================================================================
+    LOOP PRINCIPAL DA ARENA
+    ===================================================================
+--]]
 task.spawn(function()
     task.wait(4)
     print("[WaveSystem] Iniciando Arena 1: Criptas Esquecidas!")
