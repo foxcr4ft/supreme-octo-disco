@@ -7,6 +7,9 @@
     Cria a leaderstats "Moedas" de cada jogador e expõe
     _G.AdicionarMoedas(jogador, quantidade) para os outros scripts.
     A tabela do Roblox (leaderboard) mostra o valor na tela.
+
+    Este script cuida da RECOMPENSA. A exibição na tela (contador da
+    dungeon e "+X moedas" flutuando) fica no HUDSystem.server.lua.
 --]]
 
 local Players = game:GetService("Players")
@@ -49,16 +52,18 @@ function _G.AdicionarMoedas(jogador, quantidade)
     local moedas = garantirMoedas(jogador)
     moedas.Value = moedas.Value + quantidade
     print("[CoinSystem] " .. jogador.Name .. " recebeu " .. quantidade .. " moedas. Total: " .. moedas.Value)
+
+    -- O HUD só mostra o que já foi creditado: a recompensa continua sendo só daqui.
+    if _G.MostrarGanhoDeMoedas then
+        _G.MostrarGanhoDeMoedas(jogador, quantidade)
+    end
 end
 
 local function configurarJogador(jogador)
     garantirMoedas(jogador)
-    print("[CoinSystem] Leaderstats criada para " .. jogador.Name)
 end
 
 Players.PlayerAdded:Connect(configurarJogador)
 for _, jogador in ipairs(Players:GetPlayers()) do
     configurarJogador(jogador)
 end
-
-print("[CoinSystem] Sistema de moedas carregado com sucesso!")
