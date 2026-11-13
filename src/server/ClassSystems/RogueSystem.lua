@@ -40,15 +40,19 @@ local ALCANCE_CORTE = 8
 
 local COOLDOWN_DASH = 6
 local DURACAO_INVULNERAVEL = 0.5
-local DURACAO_DASH = 0.3
-local DURACAO_RASTRO = 1.2
-local DISTANCIA_DASH = 12
-local PASSOS_DASH = 4
+local DURACAO_DASH = 0.22 -- quanto tempo o avanço leva, em segundos
+local DURACAO_RASTRO = 1.2 -- quanto tempo o rastro fica na tela
+local DISTANCIA_DASH = 12 -- studs que o jogador avança
+local PASSOS_DASH = 4 -- em quantos passos o avanço é dividido
 
 local VIDA_CLASSE = 70
 local VELOCIDADE_BASE = 16
 local VELOCIDADE_CLASSE = VELOCIDADE_BASE * 1.25 -- +25%
 
+--[[
+    RemoteEvent do Dash.
+    O servidor cria o Remote e escuta; o cliente só manda o pedido.
+--]]
 local NOME_REMOTE_DASH = "DashLadino"
 
 local function obterRemoteDash()
@@ -61,6 +65,10 @@ local function obterRemoteDash()
     return remote
 end
 
+--[[
+    Grava a tag "creator" no Humanoid do inimigo.
+    É essa tag que o WaveSystem e o BossSystem leem para premiar o abate.
+--]]
 local function marcarCriador(humanoideInimigo, jogador)
     if not humanoideInimigo then
         return
@@ -76,6 +84,10 @@ local function marcarCriador(humanoideInimigo, jogador)
     tag.Value = jogador
 end
 
+--[[
+    Diz se o modelo é um inimigo válido.
+    Nunca aceita o próprio personagem nem o personagem de outro jogador.
+--]]
 local function ehInimigo(modelo, personagemDoJogador)
     if not modelo or modelo == personagemDoJogador then
         return false
@@ -89,6 +101,9 @@ local function ehInimigo(modelo, personagemDoJogador)
     return humanoide ~= nil and humanoide.Health > 0
 end
 
+--[[
+    Corte rápido: adagas atingem os inimigos à frente, em ALCANCE_CORTE studs.
+--]]
 local function cortarNaFrente(jogador, personagem)
     local root = personagem:FindFirstChild("HumanoidRootPart")
     if not root then
@@ -97,6 +112,7 @@ local function cortarNaFrente(jogador, personagem)
 
     local frente = root.CFrame.LookVector
 
+    -- Rastro do corte: uma linha fina, sem colisão e sem toque
     local rastro = Instance.new("Part")
     rastro.Name = "RastroAdagas"
     rastro.Size = Vector3.new(ALCANCE_CORTE * 0.8, 1.2, 0.25)
@@ -131,6 +147,10 @@ local function cortarNaFrente(jogador, personagem)
     end
 end
 
+--[[
+    Efeito visual de partida: uma marca no chão onde o Ladino estava.
+    É o que faz o dash aparecer na tela: você vê de onde saiu.
+--]]
 local function marcarPartida(posicao)
     local marca = Instance.new("Part")
     marca.Name = "MarcaDePartida"
@@ -149,7 +169,7 @@ local function marcarPartida(posicao)
 end
 
 --[[
-    Rastro do dash: uma caixa escura e alta deixada para trás,
+    Rastro do dash: uma caixa escura e alta deixada atrás,
     com Trail de sombra e fumaça escura saindo dela.
 --]]
 local function mostrarRastroDash(posicao, direcao)
@@ -190,7 +210,7 @@ local function mostrarRastroDash(posicao, direcao)
     rastroSombra.FaceCamera = true
     rastroSombra.Parent = rastro
 
-    -- Fumaca escura saindo do rastro
+    -- Fumaça escura saindo do rastro
     local fumaca = Instance.new("ParticleEmitter")
     fumaca.Name = "FumacaDash"
     fumaca.Texture = "rbxasset://textures/particles/smoke_main.dds"
@@ -262,7 +282,7 @@ local function executarDash(jogador, personagem)
         local porPasso = (destino - posicaoInicial) / PASSOS_DASH
 
         for i = 1, PASSOS_DASH do
-            if not root or not root.Parent or not humanoideGuardado or not humanoid.Parent then
+            if not root or not root.Parent or not humanoid.Parent then
                 break
             end
 
@@ -291,6 +311,10 @@ local function executarDash(jogador, personagem)
     end)
 end
 
+--[[
+    Cooldown do dash, guardado por jogador no servidor.
+    Assim o segundo Shift seguido é bloqueado, mesmo se o cliente insistir.
+--]]
 local ultimoDash = {}
 
 local function podeDarDash(jogador)
@@ -306,8 +330,14 @@ local function registrarDash(jogador)
     ultimoDash[jogador] = os.clock()
 end
 
+-- Tool equipada de cada jogador, para validar o pedido de dash
 local equipado = {}
 
+--[[
+    Escuta o pedido de dash vindo do cliente.
+    O servidor confere: a Tool tem que estar equipada e o cooldown tem que
+    ter passado. Assim o Shift repetido não passa.
+--]]
 local function aoPedirDash(jogador)
     local tool = equipado[jogador]
     if not tool or tool.Parent ~= jogador.Character then
@@ -329,6 +359,10 @@ end
 
 obterRemoteDash().OnServerEvent:Connect(aoPedirDash)
 
+--[[
+    Monta a Tool "Adagas Sombrias" só com Parts e WeldConstraint.
+    Nenhum Script é criado dentro dela.
+--]]
 local function criarAdagas()
     local tool = Instance.new("Tool")
     tool.Name = NOME_ADAGAS
@@ -359,6 +393,7 @@ local function criarAdagas()
     weld.Part1 = lamina
     weld.Parent = handle
 
+    -- Clique: corte com cooldown de COOLDOWN_CORTE segundos
     local podeAtacar = true
 
     tool.Activated:Connect(function()
@@ -369,7 +404,7 @@ local function criarAdagas()
         local personagem = tool.Parent
         local jogador = Players:GetPlayerFromCharacter(personagem)
         if not jogador then
-           就把 return
+            return
         end
 
         local humanoid = personagem:FindFirstChildOfClass("Humanoid")
@@ -385,6 +420,7 @@ local function criarAdagas()
         end)
     end)
 
+    -- Passivo: Dash. O cliente avisa pelo RemoteEvent; o servidor decide.
     tool.Equipped:Connect(function()
         local personagem = tool.Parent
         local jogador = Players:GetPlayerFromCharacter(personagem)
@@ -392,6 +428,8 @@ local function criarAdagas()
             return
         end
 
+        -- Marca que este jogador está com as Adagas equipadas,
+        -- para o RemoteEvent saber que o pedido é válido.
         equipado[jogador] = tool
     end)
 
@@ -405,6 +443,10 @@ local function criarAdagas()
     return tool
 end
 
+--[[
+    Entrega as Adagas para o jogador, sem duplicar.
+    Pode ser chamada de qualquer outro script do servidor.
+--]]
 function _G.EntregarAdagas(jogador)
     if typeof(jogador) ~= "Instance" or not jogador:IsA("Player") then
         return
@@ -425,6 +467,9 @@ function _G.EntregarAdagas(jogador)
     adagas.Parent = mochila
 end
 
+--[[
+    Aplica a vida e a velocidade da classe no personagem.
+--]]
 function _G.AplicarAtributosLadino(personagem)
     local humanoid = personagem:FindFirstChildOfClass("Humanoid")
     if not humanoid then
