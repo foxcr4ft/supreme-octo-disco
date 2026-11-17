@@ -12,6 +12,8 @@ local inimigosVivos = 0
 -- TASK 005 (autorizado pelo Humano): controla o loop das waves.
 local rodando = false
 local reinicioPendente = false
+-- Levantada pelo _G.ReiniciarArena; o loop principal le e recomeca.
+local reiniciarAgora = false
 
 --[[
     ===================================================================
@@ -137,8 +139,20 @@ local function obterOuCriarGuiReviver(jogador)
     local playerGui = jogador:WaitForChild("PlayerGui")
     local guiReviver = playerGui:FindFirstChild("ReviverGui")
 
+    -- Se ja existe, confere que os DOIS botoes estao la. Um GUI de teste
+    -- antigo podia ter so o botao de reviver, e o reaproveitamento deixava
+    -- o jogador sem a opcao de voltar ao Hub.
     if guiReviver then
-        return guiReviver
+        local fundoExistente = guiReviver:FindFirstChild("Fundo")
+        local pagoExistente = fundoExistente and fundoExistente:FindFirstChild("BotaoReviver")
+        local gratisExistente = fundoExistente and fundoExistente:FindFirstChild("BotaoVoltarHub")
+
+        if pagoExistente and gratisExistente then
+            return guiReviver
+        end
+
+        -- Incompleto: descarta e monta de novo
+        guiReviver:Destroy()
     end
 
     guiReviver = Instance.new("ScreenGui")
@@ -296,6 +310,19 @@ local function configurarJogador(jogador)
             end
 
             task.delay(1, function()
+                -- Confere se ESTE personagem ainda e o atual e se ainda
+                -- esta morto. Sem isso o menu abria por cima de um
+                -- jogador ja renascido: o Died do corpo antigo chega
+                -- durante a troca de personagem.
+                if jogador.Character ~= personagem then
+                    return
+                end
+
+                local humanoideAtual = personagem:FindFirstChildOfClass("Humanoid")
+                if not humanoideAtual or humanoideAtual.Health > 0 then
+                    return
+                end
+
                 if guiReviver then
                     guiReviver.Enabled = true
                 end
@@ -310,10 +337,28 @@ local function garantirPersonagem(jogador)
     end
 end
 
+--[[
+    CharacterAutoLoads reaplicado a cada entrada.
+
+    A linha Players.CharacterAutoLoads = false la em cima vale quando este
+    script roda ANTES do primeiro personagem existir. No Studio o servidor
+    pode carregar depois, e ai o auto-load continua ligado: o jogador
+    renascia sozinho e o menu aparecia sem clique nenhum.
+]]
+local function desligarAutoLoad()
+    if Players.CharacterAutoLoads then
+        Players.CharacterAutoLoads = false
+        print("[WaveSystem] CharacterAutoLoads desligado no PlayerAdded.")
+    end
+end
+
 Players.PlayerAdded:Connect(function(jogador)
+    desligarAutoLoad()
     configurarJogador(jogador)
     garantirPersonagem(jogador)
 end)
+
+desligarAutoLoad()
 
 for _, jog in ipairs(Players:GetPlayers()) do
     configurarJogador(jog)
@@ -506,18 +551,25 @@ function _G.ReiniciarArena()
         return false
     end
 
-    rodando = false
+    --[[
+        O reinicio NAO derruba mais o loop principal.
+
+        Antes esta funcao fazia rodando = false e a soltava de novo 2 s
+        depois. O while rodando do do loop principal via o false, saia
+        do laco e encerrava a corrotina: ninguem mais lia a variavel, e
+        a arena limpava os inimigos e ficava parada para sempre, sem
+        soltar nenhuma wave.
+
+        Agora o reinicio so limpa o que pertence a run e levanta uma
+        bandeira. O loop principal continua vivo e, ao ver a bandeira,
+        recomeca da Wave 1.
+    ]]
     limparInimigos()
     waveAtual = 1
     reinicioPendente = false
+    reiniciarAgora = true
 
     print("[WaveSystem] Arena reiniciada na Wave 1.")
-
-    task.spawn(function()
-        task.wait(2)
-        zerarContadorDaArena()
-        rodando = true
-    end)
 
     return true
 end
@@ -545,6 +597,13 @@ task.spawn(function()
     rodando = true
 
     while rodando do
+        -- Reinicio pedido durante a run: volta para a Wave 1 sem matar o loop
+        if reiniciarAgora then
+            reiniciarAgora = false
+            waveAtual = 1
+            print("[WaveSystem] Recomeçando a arena na Wave 1.")
+        end
+
         for w = 1, MAX_WAVES do
             if not rodando then
                 break
@@ -565,11 +624,21 @@ task.spawn(function()
                     task.wait(0.6)
                 end
 
-                while inimigosVivos > 0 and rodando do
+                -- A espera tambem sai quando chega um reinicio: senao o
+                -- loop ficava preso aqui esperando inimigos que ja morreram.
+                while inimigosVivos > 0 and rodando and not reiniciarAgora do
                     task.wait(0.5)
                 end
 
+                if reiniciarAgora then
+                    break
+                end
+
                 if not rodando then
+                    break
+                end
+
+                if reiniciarAgora then
                     break
                 end
 
@@ -592,9 +661,15 @@ task.spawn(function()
             end
         end
 
-        if rodando then
+        -- Se veio um reinicio, o loop continua por conta propria.
+        -- Sem isso ele encerrava aqui e a arena ficava muda.
+        if reiniciarAgora then
+            rodando = true
+        elseif rodando then
             print("[WaveSystem] As 5 waves terminaram. Arena livre para nova entrada.")
             rodando = false
         end
     end
+
+    print("[WaveSystem] Loop da arena encerrado.")
 end)
