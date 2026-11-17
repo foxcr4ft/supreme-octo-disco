@@ -14,6 +14,10 @@
          Se não houver inimigo no raio, atira na direção da mira.
       2. Passivo: Chuva de Flechas a cada 8 s, 30 de dano em área de 12 studs.
 
+    EFEITOS (TASK 005, autorizado pelo Humano):
+      - Flecha: Trail verde e luz na ponta.
+      - Chuva de Flechas: ParticleEmitter circular caindo do alto.
+
     Vida 90, velocidade 10% acima do normal. O Guerreiro não é afetado:
     este script só cuida do Arco do Caçador.
 
@@ -148,6 +152,36 @@ local function dispararFlecha(jogador, personagem, alvo)
     flecha.Anchored = true
     flecha.Parent = Workspace
 
+    -- Trail da flecha: a linha verde que ela deixa no ar
+    local ponta0 = Instance.new("Attachment")
+    ponta0.Name = "Ponta0"
+    ponta0.Position = Vector3.new(0, 0.2, 1.5)
+    ponta0.Parent = flecha
+
+    local ponta1 = Instance.new("Attachment")
+    ponta1.Name = "Ponta1"
+    ponta1.Position = Vector3.new(0, -0.2, -1.5)
+    ponta1.Parent = flecha
+
+    local rastroFlecha = Instance.new("Trail")
+    rastroFlecha.Name = "RastroDaFlecha"
+    rastroFlecha.Attachment0 = ponta0
+    rastroFlecha.Attachment1 = ponta1
+    rastroFlecha.Lifetime = 0.3
+    rastroFlecha.MinLength = 0
+    rastroFlecha.Color = ColorSequence.new(Color3.fromRGB(180, 255, 160), Color3.fromRGB(40, 160, 60))
+    rastroFlecha.Transparency = NumberSequence.new(0.15, 1)
+    rastroFlecha.WidthScale = NumberSequence.new(0.6, 0.1)
+    rastroFlecha.FaceCamera = true
+    rastroFlecha.Parent = flecha
+
+    -- Um brilho verde na ponta da flecha
+    local luzFlecha = Instance.new("PointLight")
+    luzFlecha.Color = Color3.fromRGB(120, 255, 140)
+    luzFlecha.Brightness = 1.5
+    luzFlecha.Range = 10
+    luzFlecha.Parent = flecha
+
     local distancia = (destino - origem).Magnitude
     local passos = math.max(1, math.floor(distancia / 3))
 
@@ -194,7 +228,29 @@ local function lancarChuvaDeFlechas(jogador, personagem)
     area.CanTouch = false
     area.CanQuery = false
     area.Parent = Workspace
-    Debris:AddItem(area, 0.5)
+
+    -- Particula circular: as flechas caindo do ceu em volta do Arqueiro
+    local emissorChuva = Instance.new("Attachment")
+    emissorChuva.Name = "EmissorChuva"
+    emissorChuva.Parent = area
+
+    local flechasCaindo = Instance.new("ParticleEmitter")
+    flechasCaindo.Name = "FlechasCaindo"
+    flechasCaindo.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    flechasCaindo.Rate = 150
+    flechasCaindo.Lifetime = NumberRange.new(0.6, 1)
+    flechasCaindo.Speed = NumberRange.new(30, 45)
+    flechasCaindo.SpreadAngle = Vector2.new(6, 6)
+    flechasCaindo.Size = NumberSequence.new(0.8, 0)
+    flechasCaindo.Transparency = NumberSequence.new(0.15, 1)
+    flechasCaindo.Color = ColorSequence.new(Color3.fromRGB(140, 255, 150))
+    flechasCaindo.Shape = Enum.ParticleEmitterShape.Cylinder
+    flechasCaindo.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+    flechasCaindo.ShapeInOut = Enum.ParticleOrientation.InnerBox
+    flechasCaindo.EmissionDirection = Enum.NormalId.Bottom
+    flechasCaindo.Parent = emissorChuva
+
+    Debris:AddItem(area, 0.8)
 
     for _, objeto in ipairs(Workspace:GetChildren()) do
         if ehInimigo(objeto, personagem) then

@@ -14,6 +14,10 @@
          Se não houver inimigo no raio, atira na direção da mira.
       2. Passivo: Nova Arcana a cada 8 s, 40 de dano em área de 8 studs.
 
+    EFEITOS (TASK 005, autorizado pelo Humano):
+      - Bola de Fogo: Trail de fogo, luz e faíscas.
+      - Nova Arcana: ParticleEmitter circular de energia, com luz roxa.
+
     Vida 80, velocidade normal. A espada do Guerreiro não é afetada:
     este script só cuida do Cajado Arcano.
 
@@ -141,6 +145,49 @@ local function lancarBolaDeFogo(jogador, personagem, alvo)
     bola.Anchored = true
     bola.Parent = Workspace
 
+    -- Trail da bola: o rastro de fogo que ela deixa no ar
+    local ponto0 = Instance.new("Attachment")
+    ponto0.Name = "Ponto0"
+    ponto0.Position = Vector3.new(0, 0.6, 0)
+    ponto0.Parent = bola
+
+    local ponto1 = Instance.new("Attachment")
+    ponto1.Name = "Ponto1"
+    ponto1.Position = Vector3.new(0, -0.6, 0)
+    ponto1.Parent = bola
+
+    local rastroFogo = Instance.new("Trail")
+    rastroFogo.Name = "RastroDeFogo"
+    rastroFogo.Attachment0 = ponto0
+    rastroFogo.Attachment1 = ponto1
+    rastroFogo.Lifetime = 0.35
+    rastroFogo.MinLength = 0
+    rastroFogo.Color = ColorSequence.new(Color3.fromRGB(255, 190, 60), Color3.fromRGB(180, 40, 0))
+    rastroFogo.Transparency = NumberSequence.new(0.2, 1)
+    rastroFogo.WidthScale = NumberSequence.new(1, 0.2)
+    rastroFogo.FaceCamera = true
+    rastroFogo.Parent = bola
+
+    -- Luz da bola, para ela iluminar o caminho
+    local luzBola = Instance.new("PointLight")
+    luzBola.Color = Color3.fromRGB(255, 150, 50)
+    luzBola.Brightness = 2
+    luzBola.Range = 14
+    luzBola.Parent = bola
+
+    -- Faíscas saindo da bola
+    local faiscas = Instance.new("ParticleEmitter")
+    faiscas.Name = "Faiscas"
+    faiscas.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    faiscas.Rate = 40
+    faiscas.Lifetime = NumberRange.new(0.3, 0.6)
+    faiscas.Speed = NumberRange.new(1, 3)
+    faiscas.SpreadAngle = Vector2.new(180, 180)
+    faiscas.Size = NumberSequence.new(0.5, 0)
+    faiscas.Transparency = NumberSequence.new(0.3, 1)
+    faiscas.Color = ColorSequence.new(Color3.fromRGB(255, 200, 90))
+    faiscas.Parent = bola
+
     local distancia = (destino - origem).Magnitude
     local passos = math.max(1, math.floor(distancia / 2))
 
@@ -188,7 +235,36 @@ local function lancarNovaArcana(jogador, personagem)
     anel.CanTouch = false
     anel.CanQuery = false
     anel.Parent = Workspace
-    Debris:AddItem(anel, 0.5)
+
+    -- Particula circular da Nova Arcana: energia subindo em volta do Mago
+    local emissor = Instance.new("Attachment")
+    emissor.Name = "EmissorNova"
+    emissor.Parent = anel
+
+    local energia = Instance.new("ParticleEmitter")
+    energia.Name = "EnergiaArcana"
+    energia.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    energia.Rate = 120
+    energia.Lifetime = NumberRange.new(0.5, 0.9)
+    energia.Speed = NumberRange.new(6, 12)
+    energia.SpreadAngle = Vector2.new(180, 180)
+    energia.Size = NumberSequence.new(1, 0)
+    energia.Transparency = NumberSequence.new(0.2, 1)
+    energia.Color = ColorSequence.new(Color3.fromRGB(190, 120, 255))
+    energia.Shape = Enum.ParticleEmitterShape.Cylinder
+    energia.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+    energia.ShapeInOut = Enum.ParticleOrientation.OuterBox
+    energia.EmissionDirection = Enum.NormalId.Top
+    energia.Parent = emissor
+
+    -- Luz roxa no momento da explosao
+    local luzNova = Instance.new("PointLight")
+    luzNova.Color = Color3.fromRGB(170, 90, 255)
+    luzNova.Brightness = 4
+    luzNova.Range = RAIO_NOVA * 2
+    luzNova.Parent = anel
+
+    Debris:AddItem(anel, 0.7)
 
     for _, objeto in ipairs(Workspace:GetChildren()) do
         if ehInimigo(objeto, personagem) then

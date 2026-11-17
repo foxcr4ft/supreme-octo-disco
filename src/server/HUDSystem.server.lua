@@ -10,8 +10,14 @@
          e soma a cada abate. É separado do leaderstats total.
       2. Texto "+X moedas" subindo no centro da tela por 1,5 s.
 
-    Quem chama é o _G.AdicionarMoedas do CoinSystem, então o número
-    mostrado é sempre o que já foi creditado de verdade.
+    TASK 005 (autorizado pelo Humano): ganhou três funções novas, para
+    o menu de morte funcionar:
+      - _G.LerMoedasDaDungeon    (só leitura)
+      - _G.PenalizarMoedasDaDungeon (morte sem pagar: perde a entrada)
+      - _G.MostrarAviso          (aviso curto no centro da tela)
+
+    A recompensa em si NÃO mudou: quem credita continua sendo o
+    _G.AdicionarMoedas do CoinSystem.
 --]]
 
 local Players = game:GetService("Players")
@@ -102,6 +108,7 @@ function _G.MostrarGanhoDeMoedas(jogador, quantidade)
     end
 
     aviso.Text = "+" .. quantidade .. " moedas"
+    aviso.TextColor3 = Color3.fromRGB(255, 215, 0)
     aviso.TextTransparency = 0
     aviso.TextStrokeTransparency = 0.4
     aviso.Position = UDim2.new(0.5, -160, 0.42, 0)
@@ -135,6 +142,68 @@ function _G.ZerarMoedasDaDungeon(jogador)
 
     moedasDaDungeon[jogador] = 0
     atualizarContador(jogador)
+end
+
+--[[
+    Devolve quantas moedas o jogador ganhou NESTA entrada da dungeon.
+    É só leitura: não mexe no leaderstats total, que é do CoinSystem.
+--]]
+function _G.LerMoedasDaDungeon(jogador)
+    if typeof(jogador) ~= "Instance" or not jogador:IsA("Player") then
+        return 0
+    end
+
+    return moedasDaDungeon[jogador] or 0
+end
+
+--[[
+    Aplica a penalidade de morte: perde as moedas ganhas nesta entrada.
+
+    A TASK 005 definiu que morrer sem pagar o revive custa TUDO o que
+    foi ganho naquela entrada. O contador volta a zero, e o saldo total
+    do leaderstats NÃO é tocado — ele fica no CoinSystem, intacto.
+--]]
+function _G.PenalizarMoedasDaDungeon(jogador)
+    if typeof(jogador) ~= "Instance" or not jogador:IsA("Player") then
+        return 0
+    end
+
+    local perdidas = moedasDaDungeon[jogador] or 0
+
+    moedasDaDungeon[jogador] = 0
+    atualizarContador(jogador)
+
+    print("[HUDSystem] " .. jogador.Name .. " perdeu " .. perdidas .. " moedas da entrada.")
+
+    return perdidas
+end
+
+--[[
+    Mostra um aviso curto no centro da tela, com a cor escolhida.
+    Usado pelo menu de morte do WaveSystem.
+--]]
+function _G.MostrarAviso(jogador, texto, cor)
+    if typeof(jogador) ~= "Instance" or not jogador:IsA("Player") then
+        return
+    end
+
+    local _, _, aviso = obterHud(jogador)
+    if not aviso then
+        return
+    end
+
+    aviso.Text = texto
+    aviso.TextColor3 = cor or Color3.fromRGB(255, 215, 0)
+    aviso.TextTransparency = 0
+    aviso.TextStrokeTransparency = 0.4
+    aviso.Position = UDim2.new(0.5, -160, 0.42, 0)
+
+    task.delay(TEMPO_NA_TELA, function()
+        if aviso then
+            aviso.Text = ""
+            aviso.TextTransparency = 1
+        end
+    end)
 end
 
 local function configurarJogador(jogador)
