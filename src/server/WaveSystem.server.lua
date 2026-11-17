@@ -22,6 +22,95 @@ local reinicioPendente = false
 local ATRIBUTO_REVIVE_PAGO = "RevivePago"
 
 --[[
+    RENASCIMENTO LIGADO AOS BOTOES.
+
+    Antes o Roblox renascia o jogador sozinho, alguns segundos depois da
+    morte, no SpawnLocation neutro do Hub. Isso atropelava a escolha:
+
+      - no "Reviver na Arena" o corpo ja tinha ido para o Hub, entao o
+        aviso aparecia e a run ficava intacta, mas o jogador era jogado
+        para fora da arena;
+      - no "Voltar ao Hub" a penalidade so rodava se o botao fosse
+        clicado, porque o respawn automatico nao passa por botao nenhum.
+
+    Com Players.CharacterAutoLoads desligado, quem renasce e o botao:
+
+      - "Reviver na Arena" -> nasce no SpawnArena, com 50% de vida
+      - "Voltar ao Hub"    -> e o renascimento gratuito, com a perda da
+                              entrada, e acontece no clique
+
+    Quem morre FORA da arena nao ve menu. Para esse caso existe a volta
+    automatica ao Hub, alguns segundos depois, senao ficaria preso na
+    tela de morte para sempre.
+]]
+Players.CharacterAutoLoads = false
+
+local ESPERA_FORA_DA_ARENA = 4
+
+--[[
+    Acha o SpawnArena. Ele e criado pelo ArenaMapSystem dentro de
+    Workspace/Arena1, mas a busca aceita qualquer lugar do Workspace.
+--]]
+local function acharSpawnArena()
+    local arena = Workspace:FindFirstChild("Arena1")
+    local spawnArena = nil
+
+    if arena then
+        spawnArena = arena:FindFirstChild("SpawnArena", true)
+    end
+
+    if not spawnArena then
+        spawnArena = Workspace:FindFirstChild("SpawnArena", true)
+    end
+
+    if spawnArena and spawnArena:IsA("BasePart") then
+        return spawnArena
+    end
+
+    return nil
+end
+
+--[[
+    Coloca o corpo dentro da arena. E o que faltava no revive pago:
+    sem isso o jogador nascia no SpawnLocation neutro, que fica no Hub.
+--]]
+local function levarParaArena(jogador)
+    local personagem = jogador.Character
+    if not personagem then
+        return
+    end
+
+    local root = personagem:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return
+    end
+
+    local destino = CENTRO_ARENA + Vector3.new(0, 5, 0)
+    local spawnArena = acharSpawnArena()
+
+    if spawnArena then
+        destino = spawnArena.Position + Vector3.new(0, 4, 0)
+    end
+
+    root.CFrame = CFrame.new(destino)
+end
+
+--[[
+    Devolve o jogador ao Hub. Usada pelo botao gratuito e pela morte
+    fora da arena. A penalidade das moedas e responsabilidade de quem
+    chama: aqui so acontece o renascimento.
+--]]
+local function voltarAoHub(jogador)
+    if not jogador.Parent then
+        return
+    end
+
+    jogador:SetAttribute(ATRIBUTO_REVIVE_PAGO, false)
+    jogador.RespawnLocation = nil
+    jogador:LoadCharacter()
+end
+
+--[[
     Só oferece a escolha para quem caiu DENTRO da arena.
     O Hub fica em Y = 100; a arena fica perto do chão.
 --]]
@@ -104,7 +193,7 @@ local function obterOuCriarGuiReviver(jogador)
     botaoGratis.TextSize = 15
     botaoGratis.Parent = fundo
 
-    -- Revive pago: renasce na arena, run intacta
+    -- Revive pago: renasce DENTRO da arena, run intacta
     botaoPago.MouseButton1Click:Connect(function()
         guiReviver.Enabled = false
 
@@ -114,11 +203,30 @@ local function obterOuCriarGuiReviver(jogador)
             _G.MostrarAviso(jogador, "Reviveu na arena! A run continua.", Color3.fromRGB(0, 200, 255))
         end
 
-        jogador:LoadCharacter()
-        task.wait(0.3)
+        -- O SpawnLocation do renascimento aponta para a arena. O HubSystem
+        -- só teleporta ao Hub quando o atributo nao esta marcado, entao
+        -- este respawn respeita a arena.
+        local spawnArena = acharSpawnArena()
+        if spawnArena then
+            jogador.RespawnLocation = spawnArena
+        end
 
-        if jogador.Character and jogador.Character:FindFirstChild("Humanoid") then
-            jogador.Character.Humanoid.Health = jogador.Character.Humanoid.MaxHealth * 0.5
+        jogador:LoadCharacter()
+
+        -- Espera passar o HubSystem (0,3 s) e o seletor de classe, que
+        -- repoe a vida cheia. Por isso a vida fica aqui no fim.
+        task.wait(0.8)
+
+        levarParaArena(jogador)
+        jogador.RespawnLocation = nil
+
+        local personagem = jogador.Character
+        if personagem then
+            local humanoid = personagem:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.Health = humanoid.MaxHealth * 0.5
+            end
+
             if _G.EntregarEspada then
                 _G.EntregarEspada(jogador)
             end
@@ -142,7 +250,6 @@ local function obterOuCriarGuiReviver(jogador)
             _G.MostrarAviso(jogador, "Perdeu " .. perdidas .. " moedas da entrada!", Color3.fromRGB(255, 90, 90))
         end
 
-        jogador:SetAttribute(ATRIBUTO_REVIVE_PAGO, false)
         print("[Reviver] " .. jogador.Name .. " foi para o Hub e perdeu " .. perdidas .. " moedas.")
 
         -- A arena dele recomeca do zero. Se ainda tiver alguem vivo
@@ -151,7 +258,9 @@ local function obterOuCriarGuiReviver(jogador)
             _G.ReiniciarArena()
         end
 
-        jogador:LoadCharacter()
+        -- O clique E o renascimento: com o auto-load desligado, nada
+        -- aconteceria sem esta chamada.
+        voltarAoHub(jogador)
     end)
 
     return guiReviver
@@ -167,6 +276,22 @@ local function configurarJogador(jogador)
             print("[Reviver] O jogador " .. jogador.Name .. " caiu em combate!")
 
             if not estaNaArena(jogador) then
+                -- Fora da arena o menu nao abre. Sem o auto-load, o
+                -- jogador ficaria preso morto: volta sozinho ao Hub.
+                task.delay(ESPERA_FORA_DA_ARENA, function()
+                    if not jogador.Parent then
+                        return
+                    end
+
+                    local atual = jogador.Character
+                    local humanoideAtual = atual and atual:FindFirstChildOfClass("Humanoid")
+                    if humanoideAtual and humanoideAtual.Health > 0 then
+                        return
+                    end
+
+                    print("[Reviver] " .. jogador.Name .. " morreu fora da arena. De volta ao Hub.")
+                    voltarAoHub(jogador)
+                end)
                 return
             end
 
@@ -179,9 +304,20 @@ local function configurarJogador(jogador)
     end)
 end
 
-Players.PlayerAdded:Connect(configurarJogador)
+local function garantirPersonagem(jogador)
+    if not jogador.Character then
+        jogador:LoadCharacter()
+    end
+end
+
+Players.PlayerAdded:Connect(function(jogador)
+    configurarJogador(jogador)
+    garantirPersonagem(jogador)
+end)
+
 for _, jog in ipairs(Players:GetPlayers()) do
     configurarJogador(jog)
+    garantirPersonagem(jog)
 end
 
 --[[
